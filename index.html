@@ -246,6 +246,17 @@ select.small{font-size:12px;padding:3px 6px;border:1px solid var(--line);border-
 .captions .w.csr{color:var(--muted)}
 .log li.csr-line{opacity:.75}
 </style>
+<style>
+.calls{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.callrow{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);cursor:pointer}
+.callrow:hover{border-color:var(--accent)}
+.callrow.sel{border-color:var(--accent);background:var(--accent-soft)}
+.callrow-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.callrow-main b{font-family:var(--f-display);font-size:14px}
+.call-sum{font-size:12.5px;color:var(--ink);opacity:.85}
+.callrow-meta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:12px;white-space:nowrap;flex:none}
+@media (max-width:600px){.callrow{flex-direction:column}.callrow-meta{align-items:flex-start;white-space:normal}}
+</style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ringcentral-web-phone@2.4.5/dist/index.iife.js"></script>
 <script src="config.js"></script>
@@ -256,6 +267,7 @@ select.small{font-size:12px;padding:3px 6px;border:1px solid var(--line);border-
     <div class="brand"><h1>Call Coach</h1><span id="coName">City Appliance</span></div>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="live" aria-selected="true">Live call</button>
+      <button role="tab" data-tab="calls" aria-selected="false">Calls</button>
       <button role="tab" data-tab="coach" aria-selected="false">Coaching</button>
       <button role="tab" data-tab="settings" aria-selected="false">Playbook</button>
       <button role="tab" data-tab="plan" aria-selected="false">Setup</button>
@@ -341,6 +353,20 @@ select.small{font-size:12px;padding:3px 6px;border:1px solid var(--line);border-
     </div>
   </section>
 
+
+
+  <section id="tab-calls" hidden>
+    <div class="page" style="max-width:1000px">
+      <div class="card">
+        <h2>Calls <span class="spacer"></span><select id="callsFilter" class="small"><option value="queue">City Appliance queue</option><option value="all">All calls</option></select></h2>
+        <div class="hint" id="callsFilterNote" style="margin-bottom:8px"></div>
+        <div class="cap-row"><input id="callsSearch" placeholder="Search by phone number, name, or anything in the notes" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface-2)"><button class="btn" id="callsRefresh" type="button">Refresh</button></div>
+        <ul class="calls" id="callsList"></ul>
+        <div class="say-actions"><button class="btn small" id="callsMore" type="button" hidden>Load more</button></div>
+      </div>
+      <div class="card" id="callDetail" hidden></div>
+    </div>
+  </section>
 
   <section id="tab-coach" hidden>
     <div class="page">
@@ -975,7 +1001,7 @@ $("newCall").onclick = ()=>{ S = blankCall(); skipKeys.clear(); aiErr=""; draft=
 const touch = () => { if(S.example){ S.example=false; } };
 document.addEventListener("click", async e=>{
   const t = e.target.closest("button"); if(!t) return;
-  if(t.dataset.tab){ tab=t.dataset.tab; document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab))); ["live","settings","plan","coach"].forEach(x=>$("tab-"+x).hidden = x!==tab); if(tab==="settings") fillSettings(); if(tab==="coach") renderCoach(); return; }
+  if(t.dataset.tab){ tab=t.dataset.tab; document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===tab))); ["live","settings","plan","coach","calls"].forEach(x=>{ const el=$("tab-"+x); if(el) el.hidden = x!==tab; }); if(tab==="settings") fillSettings(); if(tab==="coach") renderCoach(); if(tab==="calls" && typeof loadCalls==="function") loadCalls(true); return; }
   if(t.dataset.who){ who=t.dataset.who; render(); return; }
   if(t.dataset.del!==undefined){ S.lines.splice(+t.dataset.del,1); render(); return; }
   if(t.dataset.set){ const k=t.dataset.set, v=t.dataset.v; touch();
@@ -1274,7 +1300,7 @@ async function afterLogin(session, rcCode){
   rulesCol = { doc: id => ({
     set: async body => { const { error } = await sb.from("coach_rules").upsert({ id, data: body, sort: body.order||0, updated_by: me.id }); if(error) throw error; },
     delete: async () => { const { error } = await sb.from("coach_rules").delete().eq("id", id); if(error) throw error; } }) };
-  sample = { json: async prompt => { const { data, error } = await sb.functions.invoke("coach-suggest", { body:{ prompt } }); if(error) throw { code:"error", message: error.message }; if(data && data.error) throw { code:"error", message:data.error }; return data; } };
+  sample = { json: async prompt => { const { data, error } = await sb.functions.invoke("coach-suggest", { body:{ prompt } }); if(error || (data && data.error)) throw { code:"error", message: await fnError(error, data) }; return data; } };
   aiAvail = true;
   await Promise.all([loadPlaybook(), loadRules()]);
   sb.channel("coach-live").on("postgres_changes", { event:"*", schema:"public", table:"playbook" }, loadPlaybook).on("postgres_changes", { event:"*", schema:"public", table:"coach_rules" }, loadRules).subscribe();
@@ -1355,12 +1381,12 @@ let webPhone = null;
 function phoneStatus(msg, cls){ const el = $("phoneStatus"); if(el){ el.textContent = msg; el.className = "phone-status "+(cls||""); } }
 async function phoneInit(rcCode){
   renderPhone();
+  const staleErr = localStorage.getItem("coach.rc.error"); localStorage.removeItem("coach.rc.error");
   if(rcCode){
     phoneStatus("Finishing RingCentral sign-in…", "");
     try{ await rcFinishLogin(rcCode); renderPhone(); }
     catch(e){ phoneStatus("RingCentral sign-in failed: "+e.message, "bad"); return; }
-  }
-  const err = localStorage.getItem("coach.rc.error"); if(err){ localStorage.removeItem("coach.rc.error"); phoneStatus("RingCentral sign-in failed: "+err, "bad"); return; }
+  } else if(staleErr && !rcToken()){ phoneStatus("RingCentral sign-in failed: "+staleErr, "bad"); return; }
   const tok = await rcAccess();
   if(!tok){ phoneStatus("Not connected to RingCentral. Calls answered elsewhere can still be coached by typing.", ""); return; }
   phoneStatus("Starting the phone…", "");
@@ -1386,8 +1412,13 @@ function onInbound(s){
   bindSession(s, "inbound");
   ringStart();
 }
+function queueInfo(s){
+  try{ const i = s.rcApiCallInfo; if(!i) return {isQueue:false, queueName:""}; const attrs = String(i.callAttributes||""); return { isQueue: /queue/i.test(attrs) || !!i.queueName, queueName: i.queueName||"" }; }
+  catch(_){ return {isQueue:false, queueName:""}; }
+}
 function bindSession(s, direction){
   live.session = s; live.direction = direction; live.callerNumber = callerOf(s);
+  const qi = direction==="inbound" ? queueInfo(s) : {isQueue:false, queueName:""}; live.isQueue = qi.isQueue; live.queueName = qi.queueName;
   s.on && s.on("answered", ()=>onAnswered(s));
   s.on && s.on("disposed", ()=>onEnded(s));
   if(direction==="outbound") onAnswered(s, true);
@@ -1407,17 +1438,105 @@ async function onEnded(s){
   if(ended && S.lines.length){ saveCallRecord().catch(()=>{}); }
   live.startedAt = null;
 }
+async function summarizeCall(F, qt){
+  if(CFG.summarizeCalls===false || !sample) return "";
+  const cust = S.lines.filter(l=>l.w==="customer"); if(cust.length < 2) return "";
+  const transcript = S.lines.map(l=>`${l.w==="csr"?"CSR":"Customer"}: ${l.x}`).join("\n").slice(0, 12000);
+  const prompt = `Write the call notes for an appliance repair company's job record. 3 to 6 short lines, plain English, no fluff.
+Cover: why they called; appliance, brand, age and the problem as described; location; what was quoted (${qt?"$"+qt.total:"nothing yet"}); outcome (${S.booked?"booked":S.quoted?"quoted, not booked":"not quoted"}); anything the tech or office must follow up on.
+Return ONLY JSON: {"summary": "lines separated by \\n", "follow_ups": ["..."]}
+
+TRANSCRIPT:
+${transcript}`;
+  try{ const r = await withTimeout(sample.json(prompt), 25000, "summary"); const fu = (r && r.follow_ups && r.follow_ups.length) ? "\nFollow up: " + r.follow_ups.join("; ") : ""; return ((r && r.summary) || "") + fu; }
+  catch(_){ return ""; }
+}
 async function saveCallRecord(){
   const { F } = derive(); const qt = quote(F);
-  const facts = { callType:F.callType, appliance:F.appliance, symptoms:F.symptoms, brand:F.brand, premium:F.premium, fuel:F.fuel, age:F.age, zip:F.zip, city:F.city, zone:F.loc&&F.loc.zone, rate:F.loc&&F.loc.rate, fee:qt&&qt.total, property:F.property, commercial:F.commercial, timing:F.timing, flags:F.flags, lead:F.lead };
-  await sb.from("calls").insert({ csr: me.id, started_at: new Date(S.start||Date.now()).toISOString(), ended_at: new Date().toISOString(), caller_number: live.callerNumber||null, direction: live.direction||null, facts, transcript: S.lines, note: $("notesText") ? $("notesText").value : "", quoted: !!S.quoted, booked: !!S.booked });
+  const facts = { callType:F.callType, appliance:F.appliance, symptoms:F.symptoms, brand:F.brand, premium:F.premium, fuel:F.fuel, age:F.age, zip:F.zip, city:F.city, zone:F.loc&&F.loc.zone, rate:F.loc&&F.loc.rate, fee:qt&&qt.total, property:F.property, commercial:F.commercial, timing:F.timing, flags:F.flags, lead:F.lead, name:F.name||null, phone:F.phone||null, applianceLabel:F.appliance?appName(F.appliance):null, issues:F.appliance?F.symptoms.map(x=>symLabel(F.appliance,x)):[] };
+  const row = { csr: me.id, csr_name: me.email, started_at: new Date(S.start||Date.now()).toISOString(), ended_at: new Date().toISOString(), caller_number: live.callerNumber||null, direction: live.direction||null, is_queue: !!live.isQueue, queue_name: live.queueName||null, customer_name: F.name||null, facts, transcript: S.lines, note: $("notesText") ? $("notesText").value : "", quoted: !!S.quoted, booked: !!S.booked, summary: "" };
+  phoneStatus("Call ended. Saving the transcript…", "");
+  row.summary = await summarizeCall(F, qt);
+  const { error } = await sb.from("calls").insert(row);
+  phoneStatus(error ? "Call ended, but it couldn't be saved: "+error.message : "Call saved. Find it on the Calls tab.", error ? "bad" : "ok");
+  if(!error && tab==="calls") loadCalls(true);
 }
+function fmtPhone(n){ const d = String(n||"").replace(/\D/g,""); if(d.length===11 && d[0]==="1") return `(${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`; if(d.length===10) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`; return String(n||""); }
+
+/* ============================ CALLS TAB ============================ */
+const callsState = { rows:[], page:0, pageSize:50, q:"", filter:"queue", sel:null, loading:false, done:false, detail:null };
+const queueMatch = () => (CFG.queueNames||[]).filter(Boolean);
+async function loadCalls(reset){
+  if(!sb || !me) return;
+  if(reset){ callsState.rows=[]; callsState.page=0; callsState.done=false; callsState.sel=null; callsState.detail=null; }
+  if(callsState.loading || callsState.done) return;
+  callsState.loading = true; renderCalls();
+  const from = callsState.page*callsState.pageSize, to = from+callsState.pageSize-1;
+  let q = sb.from("calls").select("id,started_at,ended_at,caller_number,direction,quoted,booked,queue_name,is_queue,customer_name,csr_name,facts,summary").order("started_at",{ascending:false}).range(from,to);
+  if(callsState.filter==="queue"){ q = q.eq("is_queue", true); const names = queueMatch(); if(names.length) q = q.or(names.map(n=>`queue_name.ilike.%${n.replace(/[%,()]/g,"")}%`).join(",")); }
+  const term = callsState.q.trim();
+  if(term){ const digits = term.replace(/\D/g,""); const t = term.replace(/[%,()]/g,""); const ors = [`customer_name.ilike.%${t}%`,`note.ilike.%${t}%`,`summary.ilike.%${t}%`]; if(digits.length>=3) ors.push(`caller_number.ilike.%${digits}%`); q = q.or(ors.join(",")); }
+  const { data, error } = await q;
+  callsState.loading = false;
+  if(error){ callsState.error = error.message; renderCalls(); return; }
+  callsState.error = "";
+  callsState.rows = callsState.rows.concat(data||[]); callsState.page++; if(!data || data.length < callsState.pageSize) callsState.done = true;
+  renderCalls();
+}
+async function openCall(id){
+  callsState.sel = id; callsState.detail = null; renderCalls();
+  const { data } = await sb.from("calls").select("*").eq("id", id).maybeSingle();
+  callsState.detail = data || null; renderCalls();
+  const d = $("callDetail"); if(d) d.scrollIntoView({behavior:"smooth", block:"start"});
+}
+const fmtWhen = iso => { const d = new Date(iso); return d.toLocaleDateString([], {month:"short", day:"numeric"}) + " " + d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}); };
+const fmtDur = (a,b) => { const s = Math.max(0, Math.round((new Date(b)-new Date(a))/1000)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
+function renderCalls(){
+  const el = $("callsList"); if(!el) return;
+  const names = queueMatch();
+  $("callsFilter").options[0].textContent = names.length ? names.join(" / ") + " queue" : "Call queue calls";
+  $("callsFilter").value = callsState.filter;
+  $("callsFilterNote").textContent = callsState.filter==="queue" ? (names.length ? `Showing calls that came in through: ${names.join(", ")}` : "Showing calls that came in through any call queue") : "Showing every call answered in the coach, including direct and outbound.";
+  if(callsState.error){ el.innerHTML = `<li class="empty">Couldn't load calls: ${esc(callsState.error)}</li>`; return; }
+  el.innerHTML = callsState.rows.length ? callsState.rows.map(r=>{ const f = r.facts||{}; const who = r.customer_name || fmtPhone(r.caller_number) || "Unknown caller";
+      return `<li class="callrow ${callsState.sel===r.id?"sel":""}" data-call="${esc(r.id)}">
+        <div class="callrow-main"><b>${esc(who)}</b>${r.customer_name&&r.caller_number?` <span class="mono hint">${esc(fmtPhone(r.caller_number))}</span>`:""}
+          <div class="hint">${esc([f.applianceLabel||(f.appliance?appName(f.appliance):""), (f.issues||[]).join(", "), f.brand, f.city||f.zip].filter(Boolean).join(" · ")||"No details captured")}</div>
+          ${r.summary?`<div class="call-sum">${esc(r.summary.split("\n")[0])}</div>`:""}</div>
+        <div class="callrow-meta"><span>${esc(fmtWhen(r.started_at))}</span><span class="hint">${esc(fmtDur(r.started_at, r.ended_at))} · ${esc((r.csr_name||"").split("@")[0])}</span>
+          <span>${r.booked?`<span class="pill ok">booked</span>`:r.quoted?`<span class="pill">quoted</span>`:`<span class="pill bad">not quoted</span>`}${f.fee?` <span class="pill">$${esc(f.fee)} fee</span>`:""}${r.direction==="outbound"?` <span class="pill">outbound</span>`:""}${r.queue_name?` <span class="pill">${esc(r.queue_name)}</span>`:""}</span></div></li>`; }).join("")
+    : `<li class="empty">${callsState.loading?"Loading…":"No calls here yet. Calls answered in the coach show up as soon as they end."}</li>`;
+  $("callsMore").hidden = callsState.done || !callsState.rows.length; $("callsMore").disabled = callsState.loading;
+  const d = $("callDetail");
+  if(!callsState.sel){ d.hidden = true; return; }
+  d.hidden = false;
+  const c = callsState.detail;
+  if(!c){ d.innerHTML = `<h2>Call</h2><div class="empty">Loading…</div>`; return; }
+  const f = c.facts||{}; const start = c.started_at ? new Date(c.started_at).getTime() : 0;
+  const t0 = (c.transcript && c.transcript.length) ? Math.min(...c.transcript.map(l=>l.t||start)) : start;
+  d.innerHTML = `<h2>${esc(c.customer_name || fmtPhone(c.caller_number) || "Call")} <span class="spacer"></span><span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">${esc(fmtWhen(c.started_at))} · ${esc(fmtDur(c.started_at,c.ended_at))} · ${esc(c.csr_name||"")}</span></h2>
+    <div class="chips">${[f.applianceLabel, f.brand, (f.issues||[]).join(", "), f.age, f.city||f.zip, f.fee?"$"+f.fee+" quoted":null, c.booked?"Booked":null, c.queue_name].filter(Boolean).map(x=>`<span class="chip on auto">${esc(x)}</span>`).join("")}</div>
+    ${c.summary?`<div class="sub">Summary</div><div class="script" style="white-space:pre-wrap">${esc(c.summary)}</div>`:""}
+    <div class="sub">HCP job note <button class="btn small" id="copyCallNote" style="margin-left:8px">Copy</button> <span class="hint" id="copyCallMsg"></span></div>
+    <textarea readonly id="callNoteText" style="width:100%;min-height:110px;font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--surface-2)">${esc(c.note||"")}</textarea>
+    <div class="sub">Transcript</div>
+    <ul class="log" style="max-height:none">${(c.transcript||[]).map(l=>`<li class="${l.w==="csr"?"csr-line":""}"><span class="t">${esc(fmtDur(t0, l.t||t0))}</span><span class="w ${l.w==="csr"?"csr":""}">${l.w==="csr"?"CSR":"Customer"}</span><span class="txt">${esc(l.x)}</span></li>`).join("")||`<li class="empty">No transcript was captured for this call.</li>`}</ul>`;
+}
+document.addEventListener("click", async e=>{
+  const t = e.target.closest("button, li.callrow"); if(!t) return;
+  if(t.dataset && t.dataset.call){ openCall(t.dataset.call); return; }
+  if(t.id==="callsMore"){ loadCalls(false); return; }
+  if(t.id==="callsRefresh"){ loadCalls(true); return; }
+  if(t.id==="copyCallNote"){ const txt=$("callNoteText").value; try{ await navigator.clipboard.writeText(txt); $("copyCallMsg").textContent="Copied."; }catch(_){ $("callNoteText").select(); $("copyCallMsg").textContent="Selected. Press Ctrl+C."; } }
+});
+document.addEventListener("change", e=>{ if(e.target.id==="callsFilter"){ callsState.filter = e.target.value; loadCalls(true); } });
+let callsSearchT; document.addEventListener("input", e=>{ if(e.target.id==="callsSearch"){ clearTimeout(callsSearchT); callsSearchT = setTimeout(()=>{ callsState.q = e.target.value; loadCalls(true); }, 350); } });
 function renderPhone(){
   const el = $("phone"); if(!el) return;
   const s = live.session; const tok = rcToken();
   el.innerHTML = `<h2>Phone <span class="spacer"></span>${tok?`<button class="btn small" id="rcOut">Disconnect RingCentral</button>`:`<button class="btn small primary" id="rcIn">Connect RingCentral</button>`}</h2>
     <div class="phone-status" id="phoneStatus"></div>
-    ${s && !live.answered ? `<div class="ringing"><div><b>${live.direction==="outbound"?"Calling":"Incoming call"}</b><div class="mono">${esc(live.callerNumber||"unknown number")}</div></div><div class="say-actions">${live.direction==="inbound"?`<button class="btn primary" id="callAnswer">Answer</button><button class="btn" id="callDecline">Decline</button>`:`<button class="btn" id="callHang">Hang up</button>`}</div></div>`:""}
+    ${s && !live.answered ? `<div class="ringing"><div><b>${live.direction==="outbound"?"Calling":"Incoming call"}</b>${live.queueName?` <span class="pill">${esc(live.queueName)}</span>`:""}<div class="mono">${esc(fmtPhone(live.callerNumber)||"unknown number")}</div></div><div class="say-actions">${live.direction==="inbound"?`<button class="btn primary" id="callAnswer">Answer</button><button class="btn" id="callDecline">Decline</button>`:`<button class="btn" id="callHang">Hang up</button>`}</div></div>`:""}
     ${s && live.answered ? `<div class="oncall"><div><b>On the call</b> <span class="mono">${esc(live.callerNumber||"")}</span> <span class="pill ${live.ws?"ok":"bad"}" id="sttPill">${live.ws?"listening":"not transcribing"}</span></div>
       <div class="say-actions"><button class="btn" id="callMute">${live.muted?"Unmute":"Mute"}</button><button class="btn" id="callHold">${live.held?"Resume":"Hold"}</button><button class="btn" id="callHang" style="border-color:var(--danger);color:var(--danger)">Hang up</button></div>
       <div class="captions"><div><span class="w">CUSTOMER</span> <span id="capCust">${esc(live.interim.customer)}</span></div><div><span class="w csr">CSR</span> <span id="capCsr">${esc(live.interim.csr)}</span></div></div></div>`:""}
@@ -1446,9 +1565,15 @@ document.addEventListener("click", async e=>{
 document.addEventListener("change", e=>{ if(e.target.id==="autoCoach"){ live.autoCoach = e.target.checked; } });
 
 /* ============================ LIVE TRANSCRIPTION (Deepgram, 2 channels: CSR left, customer right) ============================ */
+async function fnError(error, data){
+  // Pull the function's own message out of a non-2xx reply so the CSR sees the real reason.
+  if(data && data.error) return data.error;
+  if(error && error.context && typeof error.context.json==="function"){ try{ const j = await error.context.json(); if(j && j.error) return j.error; }catch(_){} }
+  return (error && error.message) || "unknown error";
+}
 async function deepgramToken(){
   const { data, error } = await sb.functions.invoke("deepgram-token", { body:{} });
-  if(error || !data || !data.token) throw new Error((error&&error.message)||(data&&data.error)||"no Deepgram token");
+  if(error || !data || !data.token) throw new Error(await fnError(error, data));
   return data; // {token, protocol:'bearer'|'token'}
 }
 async function startSTT(session){
