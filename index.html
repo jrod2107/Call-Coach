@@ -874,7 +874,7 @@ function renderFacts(F,SRC){
       ${inp("scheddate","Date told to customer",'type="date"')}
       <div class="field"><label for="f_schedslot">Time slot</label><select id="f_schedslot" data-fact="schedslot"><option value="">—</option><option value="AM"${F.schedslot==="AM"?" selected":""}>AM</option><option value="PM"${F.schedslot==="PM"?" selected":""}>PM</option></select></div>
       ${inp("schednote","Time note (e.g. not home until 2pm)")}
-    </div>`:""}
+    </div>
     <datalist id="brandList">${BRAND_LIST.map(b=>`<option value="${esc(b)}">`).join("")}</datalist>`;
   if(focused && $(focused)) $(focused).focus();
 }
