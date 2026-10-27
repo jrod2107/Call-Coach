@@ -845,26 +845,37 @@ function renderFacts(F,SRC){
   const A = F.appliance && APP[F.appliance];
   el.innerHTML = `<h2>Call facts <span class="spacer hint" style="text-transform:none;letter-spacing:0;font-weight:400">blue = picked up automatically</span></h2>
     <div class="calltype chips">${chip("callType","service","Service / repair")}${chip("callType","install","Installation")}</div>
-    <div class="chips">${appList.map(a=>chip("appliance",a.id,a.label)).join("")}</div>
-    ${sym}
-    ${A&&A.fuel&&!inst?`<div class="sub">Fuel: never assume</div><div class="chips">${A.fuel.map(x=>chip("fuel",x,x[0].toUpperCase()+x.slice(1))).join("")}</div>`:""}
+    <div class="chips">${appList.map(a=>chip("appliance",a.id,a.label)).join("")}</div>    ${A&&A.fuel&&!inst?`<div class="sub">Fuel: never assume</div><div class="chips">${A.fuel.map(x=>chip("fuel",x,x[0].toUpperCase()+x.slice(1))).join("")}</div>`:""}
     ${A&&A.stack&&!inst?`<div class="sub">Setup</div><div class="chips">${chip("stacked","separate","Separate")}${chip("stacked","stacked","Stacked unit")}</div>`:""}
     ${F.appliance==="oven"&&!inst?`<div class="sub">Unit type: never guess</div><div class="chips">${chip("rangeType","range","Range (burners + oven)")}${chip("rangeType","cooktop","Cooktop only")}${chip("rangeType","wall","Wall oven")}</div>`:""}
     ${!inst?`<div class="sub">Age</div><div class="chips">${AGE_B.map(x=>chip("age",x,x)).join("")}</div>`:""}
     <div class="sub">When</div><div class="chips">${chip("timing","asap","ASAP / today")}${chip("timing","soon","This week")}${chip("timing","flex","Flexible")}</div>
     <div class="sub">Property</div><div class="chips">${chip("property","owner","Owner / occupant")}${chip("property","rental","Tenant / property mgr")}${chip("commercial","residential","Residential")}${chip("commercial","commercial","Commercial")}</div>
+    ${sym}
     <div class="fgrid">
       ${!inst?`<div class="field"><label for="f_brand">Brand${tag("brand")}${F.premium?` <span class="pill prem">premium +${money(settings.premiumFee)}</span>`:""}</label><input id="f_brand" data-fact="brand" list="brandList" autocomplete="off" class="${SRC.brand&&SRC.brand!=="you"?"auto":""}" value="${esc(F.brand??"")}"></div>`:""}
-      <div class="field"><label for="f_zip">ZIP${tag("zip")}</label><input id="f_zip" data-fact="zip" inputmode="numeric" class="${SRC.zip&&SRC.zip!=="you"?"auto":""}" value="${esc(F.zip??"")}"></div>
-      <div class="field"><label for="f_city">City / area${tag("city")}</label><select id="f_city" data-fact="city"><option value="">—</option>${Object.entries(KB.CITY_ZONES).map(([k,c])=>`<option value="${k}" ${F.city===k?"selected":""}>${esc(c.n)}</option>`).join("")}</select></div>
       ${!inst?inp("model","Model / serial #"):""}
       ${!inst?inp("error","Error code"):""}
-      ${inp("name","Customer name")}
-      ${inp("phone","Phone",'type="tel"')}
-      ${F.property==="rental"?inp("auth","Authorized contact")+inp("limit","Spending limit"):""}
-      <div class="field"><label for="f_lead">Heard about us${tag("lead")}</label><select id="f_lead" data-fact="lead"><option value="">—</option>${LEADS.map(v=>`<option ${F.lead===v?"selected":""}>${esc(v)}</option>`).join("")}</select></div>
+      
     </div>
-    ${F.loc?`<div class="zone"><span class="pill ${F.loc.zone==="Standard area"?"ok":"prem"}">${esc(F.loc.zone)} · ${money(F.loc.rate)}</span> ${esc(F.loc.name||"")}${F.loc.note?" · "+esc(F.loc.note):""}${F.loc.route?` · route: ${esc(F.loc.route)}`:""}</div>`:""}
+    <div class="sub">Customer info</div>
+    <div class="fgrid">
+      ${inp("firstname","First name")}
+      ${inp("lastname","Last name")}
+      ${inp("address","Street address")}
+      <div class="field"><label for="f_zip">ZIP${tag("zip")}</label><input id="f_zip" data-fact="zip" inputmode="numeric" class="${SRC.zip&&SRC.zip!=="you"?"auto":""}" value="${esc(F.zip??"")}"></div>
+      <div class="field"><label for="f_city">City / area${tag("city")}</label><select id="f_city" data-fact="city"><option value="">—</option>${Object.entries(KB.CITY_ZONES).map(([k,c])=>`<option value="${k}" ${F.city===k?"selected":""}>${esc(c.n)}</option>`).join("")}</select></div>
+      ${inp("phone","Phone",'type="tel"')}
+      ${inp("phone2","Alt. phone",'type="tel"')}
+      <div class="field"><label for="f_lead">Heard about us${tag("lead")}</label><select id="f_lead" data-fact="lead"><option value="">—</option>${LEADS.map(v=>`<option ${F.lead===v?"selected":""}>${esc(v)}</option>`).join("")}</select></div>
+    <
+    </div>
+    <div class="sub">Schedule</div>
+    <div class="fgrid">
+      ${inp("scheddate","Date told to customer",'type="date"')}
+      <div class="field"><label for="f_schedslot">Time slot</label><select id="f_schedslot" data-fact="schedslot"><option value="">—</option><option value="AM"${F.schedslot==="AM"?" selected":""}>AM</option><option value="PM"${F.schedslot==="PM"?" selected":""}>PM</option></select></div>
+      ${inp("schednote","Time note (e.g. not home until 2pm)")}
+    </div>`:""}
     <datalist id="brandList">${BRAND_LIST.map(b=>`<option value="${esc(b)}">`).join("")}</datalist>`;
   if(focused && $(focused)) $(focused).focus();
 }
