@@ -868,7 +868,6 @@ function renderFacts(F,SRC){
       ${inp("phone","Phone",'type="tel"')}
       ${inp("phone2","Alt. phone",'type="tel"')}
       <div class="field"><label for="f_lead">Heard about us${tag("lead")}</label><select id="f_lead" data-fact="lead"><option value="">—</option>${LEADS.map(v=>`<option ${F.lead===v?"selected":""}>${esc(v)}</option>`).join("")}</select></div>
-    <
     </div>
     <div class="sub">Schedule</div>
     <div class="fgrid">
