@@ -161,7 +161,7 @@ const FEES = {
     "Other":{fee:null,note:"Get the ZIP to look up the fee. If no fee comes up, save their info and tell them the scheduling team will call back to complete the booking."}
   },
   premiumBrands:["Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram"],
-  premiumFee:50, builtInFridgeFee:50
+  premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85
 };
 const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
@@ -482,7 +482,7 @@ function feeParts(){
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
   const anyBuiltIn=S.units.some(u=>{ if(u.app!=="Refrigerator"||u.svc!=="Diagnosis") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
-  if(S.units.length>1) parts.push(S.units.length+" appliances — confirm multi-appliance pricing");
+  if(S.units.length>1){ const extra=(S.units.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(S.units.length>2?"s":"")); }
   return {total,parts};
 }
 function updateFee(){
