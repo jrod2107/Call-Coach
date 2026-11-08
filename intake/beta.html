@@ -91,6 +91,10 @@ body.online select.csr{display:none}
 body.online .hchip{display:inline-block}
 .hchip.ok{background:#059669}.hchip.bad{background:#dc2626}
 .hsearch{width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit}
+.hlist{max-height:240px;overflow-y:scroll;border:1px solid #cbd5e1;border-radius:8px;padding:0 8px 8px;margin-top:6px;background:#f8fafc}
+.hlist::-webkit-scrollbar{width:10px}.hlist::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:6px}.hlist::-webkit-scrollbar-track{background:#e2e8f0;border-radius:6px}
+.hhead{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.hlink{background:none;border:none;color:#1e40af;font-weight:700;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
 .hcard{border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-top:8px}
 .hcard.sel{border-color:#1e40af;background:#eff6ff}
 .hcard .opt{margin-top:6px}
@@ -817,14 +821,16 @@ function renderLookup(){
   html+='<input class="hsearch" id="hQ" placeholder="Search phone, name, or address" value="'+esc(h.q||"")+'">';
   if(lastResults==null) html+='<div class="hm" style="margin-top:6px">Matches show up here as you type the phone, name, or street.</div>';
   else if(!lastResults.length) html+='<div class="hm" style="margin-top:6px">No match in HCP. This will be a new customer.</div>';
+  else if(h.dismissed) html+='<div class="hm" style="margin-top:6px">Matches cleared. This will be saved as a new customer. <button class="hlink" id="hUndo">Show matches again</button></div>';
   else {
-    html+='<div class="hsub">Possible matches. Pick one or confirm it\'s new.</div>'+lastResults.map((c,i)=>'<div class="hcard"><div class="hn">'+esc([c.first_name,c.last_name].filter(Boolean).join(" ")||c.company||"(no name)")+'</div><div class="hm">'+esc([fmtPhone(c.mobile_number)||fmtPhone(c.home_number),(c.addresses&&c.addresses[0]?[c.addresses[0].street,c.addresses[0].city].filter(Boolean).join(", "):"")].filter(Boolean).join(" · "))+'</div><button class="opt" data-hpick="'+i+'">Use this customer</button></div>').join('');
+    html+='<div class="hhead"><div class="hsub">'+lastResults.length+' possible match'+(lastResults.length>1?'es':'')+'. Pick one or clear.</div><button class="hlink" id="hDismiss">Clear matches</button></div>';
+    html+='<div class="hlist">'+lastResults.map((c,i)=>'<div class="hcard"><div class="hn">'+esc([c.first_name,c.last_name].filter(Boolean).join(" ")||c.company||"(no name)")+'</div><div class="hm">'+esc([fmtPhone(c.mobile_number)||fmtPhone(c.home_number),(c.addresses&&c.addresses[0]?[c.addresses[0].street,c.addresses[0].city].filter(Boolean).join(", "):"")].filter(Boolean).join(" · "))+'</div><button class="opt" data-hpick="'+i+'">Use this customer</button></div>').join('')+'</div>';
     html+='<button class="opt'+(h.isNew?' sel':'')+'" id="hNew" style="margin-top:6px">None of these, it\'s a new customer</button>';
   }
   box.innerHTML=html;
 }
 function scheduleSearch(q){
-  clearTimeout(searchTimer); const h=hcpState(); if(!online||h.cid||h.saved) return;
+  clearTimeout(searchTimer); const h=hcpState(); if(!online||h.cid||h.saved||h.dismissed) return;
   if(String(q||"").trim().length<3) return;
   searchTimer=setTimeout(()=>runSearch(q),500);
 }
@@ -868,19 +874,41 @@ function autoCity(){
 
 /* ---------- customer-safe line items ---------- */
 const INTERNAL_QS=()=>[SH_tight,SH_parts,SH_workedOn,W_sup,W_area,W_armisSrc,W_armisFee,W_armisAmt];
+function cleanVal(v){ return String(v||"").trim().replace(/\s+—\s+/g,", ").replace(/\s+\/\s+/g," / ").replace(/[.\s]+$/,""); }
+function cleanLabel(q){
+  let t=shortQ(q.q).replace(/\s*—\s*/g," ").replace(/\s+/g," ").trim();
+  t=t.replace(/^(What'?s|What is) the main issue$/i,"Issue").replace(/^.*main issue$/i,"Issue")
+     .replace(/^When was the (.+) last (cleaned|changed)$/i,"$1 last $2").replace(/^Is (this|the washer|the appliance) (a |an )?/i,"").replace(/^(Does|Do|Is|Are|Has|Have|Did|Will|Was) (it|the|they|there|you|anyone)\s*/i,"")
+     .replace(/^(What|Which|When|Where|How) /i,m=>m);
+  return t.charAt(0).toUpperCase()+t.slice(1);
+}
 function unitLine(u){
-  const app=appOf(u); const bits=[];
-  const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||"Other"):u.ans[SH_brand.id];
+  const app=appOf(u); const L=[];
+  const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||""):u.ans[SH_brand.id];
   const model=String(u.ans[SH_model.id]||"").trim();
-  if(u.svc==="Warranty") bits.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?" (claim "+u.ans[W_sr.id].trim().toUpperCase()+")":""));
-  if(u.svc==="Install") bits.push("Install");
-  if(brand) bits.push("Brand: "+brand);
-  if(app) app.qs.filter(q=>visible(q,u.ans)&&!q.info).forEach(q=>{ const v=String(u.ans[q.id]||"").trim(); if(v) bits.push(shortQ(q.q)+": "+v); });
-  if(u.svc!=="Install"){
-    [[SH_err,"Error code"],[SH_dur,"How long"],[SH_onset,"Started"],[SH_every,"Happens"]].forEach(([q,l])=>{ const v=String(u.ans[q.id]||"").trim(); if(v) bits.push(l+": "+v); });
-    if(String(u.ans[SH_words.id]||"").trim()) bits.push("Customer says: "+u.ans[SH_words.id].trim());
+  const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
+  L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord+(model?" (model "+model+")":""));
+  if(u.svc==="Warranty") L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?", claim "+u.ans[W_sr.id].trim().toUpperCase():""));
+  if(app){
+    const qs=app.qs.filter(q=>!q.info);
+    const mains=new Set(qs.filter(q=>q.main).map(q=>q.id));
+    const issueIds=new Set(mains); let grew=true;
+    while(grew){ grew=false; qs.forEach(q=>{ if(!issueIds.has(q.id)&&q.showIf&&issueIds.has(q.showIf[0])){ issueIds.add(q.id); grew=true; } }); }
+    const firstMain=qs.findIndex(q=>q.main);
+    const ans=q=>visible(q,u.ans)?cleanVal(u.ans[q.id]):"";
+    const setup=qs.filter((q,i)=>!issueIds.has(q.id)&&(firstMain<0||i<firstMain)).map(q=>{ const v=ans(q); return v?cleanLabel(q)+": "+v:""; }).filter(Boolean);
+    const issue=qs.filter(q=>issueIds.has(q.id)).map(ans).filter(Boolean);
+    const other=qs.filter((q,i)=>!issueIds.has(q.id)&&firstMain>=0&&i>firstMain).map(q=>{ const v=ans(q); return v?cleanLabel(q)+": "+v:""; }).filter(Boolean);
+    if(issue.length) L.push("Issue: "+issue.map((v,i)=>i?v.charAt(0).toLowerCase()+v.slice(1):v).join(", "));
+    setup.concat(other).forEach(x=>L.push(x));
   }
-  return {name:(u.app||"Appliance")+(model?" - "+model:" -"), description:bits.map(b=>b.replace(/[.\s]+$/,"")).join(". ")+".", unit_price:0, quantity:1, kind:"labor"};
+  if(u.svc!=="Install"){
+    const err=cleanVal(u.ans[SH_err.id]); if(err) L.push("Error code: "+err);
+    const when=[u.ans[SH_onset.id]&&u.ans[SH_onset.id]!=="Not sure"?"Started "+u.ans[SH_onset.id].toLowerCase():"", u.ans[SH_dur.id]?u.ans[SH_dur.id].toLowerCase():"", u.ans[SH_every.id]?(u.ans[SH_every.id]==="Intermittent"?"comes and goes":"happens every time"):""].filter(Boolean);
+    if(when.length){ const t=when.join(", "); L.push(t.charAt(0).toUpperCase()+t.slice(1)); }
+    const w=String(u.ans[SH_words.id]||"").trim(); if(w) L.push('Customer says: "'+w.replace(/"/g,"'")+'"');
+  }
+  return {name:(u.app||"Appliance")+(model?" - "+model:" -"), description:L.join("\n"), unit_price:0, quantity:1, kind:"labor"};
 }
 function buildLineItems(diagSvc){
   const {total}=feeParts(); const items=[];
@@ -890,7 +918,7 @@ function buildLineItems(diagSvc){
   const city=S.g[CU_city.id]||"";
   S.units.forEach(u=>items.push(unitLine(u)));
   if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
-    const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",
+    const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",taxable:true,
       description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
     if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
     items.push(d);
@@ -962,7 +990,7 @@ async function saveToHcp(kind){
         else warn="Job created, but the line items didn't save: "+e1.message.slice(0,160)+". Add them in HCP.";
       }
     } else {
-      const li=buildLineItems(null).map(x=>Object.assign({},x,{unit_price:Math.round(x.unit_price)}));
+      const li=buildLineItems(null).map(x=>{ const y=Object.assign({},x,{unit_price:Math.round(x.unit_price)}); delete y.taxable; return y; });
       res=await call("lead_create",{lead:{customer_id:cid,address_id:aid,line_items:li,tags:buildTags(),note}});
       id=res.id; number=res.number;
     }
@@ -1009,6 +1037,8 @@ document.addEventListener("click",e=>{
   if(e.target.id==="signInLink"){ e.preventDefault(); showLogin(true); return; }
   if(e.target.id==="offlineLink"){ e.preventDefault(); goOffline(); return; }
   const p=e.target.closest("[data-hpick]"); if(p){ pickCustomer(lastResults[+p.dataset.hpick]); return; }
+  if(e.target.id==="hDismiss"){ const h=hcpState(); h.dismissed=true; h.isNew=true; save(); renderLookup(); updateChecklist(); return; }
+  if(e.target.id==="hUndo"){ const h=hcpState(); h.dismissed=false; h.isNew=false; save(); renderLookup(); updateChecklist(); return; }
   if(e.target.id==="hNew"){ const h=hcpState(); h.isNew=!h.isNew; save(); renderLookup(); updateChecklist(); return; }
   if(e.target.id==="hClear"){ const h=hcpState(); delete h.cid; delete h.cust; delete h.addrId; delete h.jobs; lastResults=null; save(); renderLookup(); updateChecklist(); scheduleSearch(digits(S.cust.phone).length>=7?digits(S.cust.phone):S.cust.last); return; }
   if(e.target.id==="saveJobBtn"){ saveToHcp("job"); return; }
@@ -1020,7 +1050,7 @@ document.addEventListener("change",e=>{ if(e.target.name==="haddr"){ const h=hcp
   if(e.target.dataset&&e.target.dataset.c==="cityTxt") autoCity(); });
 document.addEventListener("input",e=>{
   const t=e.target;
-  if(t.id==="hQ"){ hcpState().q=t.value; scheduleSearch(t.value); return; }
+  if(t.id==="hQ"){ const h=hcpState(); h.q=t.value; h.dismissed=false; h.isNew=false; scheduleSearch(t.value); return; }
   if(t.dataset&&t.dataset.c==="zip"&&/^\d{5}$/.test(t.value.trim())) autoCity();
   if(t.dataset&&t.dataset.c){ const c=t.dataset.c; const v=t.value;
     if(c==="phone"&&digits(v).length>=7) scheduleSearch(digits(v));
