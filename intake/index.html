@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Appliance — Call Intake</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f3f4f6;color:#1f2937;font-size:14px}
+.header{background:linear-gradient(135deg,#1e40af 0%,#1e3a8a 100%);color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.header h1{font-size:18px;font-weight:700}
+.header .sub{font-size:11px;opacity:.85}
+.hright{display:flex;align-items:center;gap:10px}
+.feechip{background:#fff;color:#1e3a8a;font-weight:800;padding:6px 14px;border-radius:999px;font-size:15px;min-width:70px;text-align:center}
+.feechip small{display:block;font-weight:600;font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px}
+select.csr{padding:6px 8px;border-radius:6px;border:none;font-weight:700;font-size:13px;color:#1e3a8a}
+.btn{padding:8px 14px;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px}
+.btn.ghost{background:rgba(255,255,255,.15);color:#fff}
+.wrap{display:grid;grid-template-columns:290px 1fr 300px;gap:14px;padding:14px;max-width:1500px;margin:0 auto;align-items:start}
+.panel{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.panel.sticky{position:sticky;top:66px;max-height:calc(100vh - 80px);overflow-y:auto}
+.psec{padding:14px;border-bottom:1px solid #e5e7eb}
+.psec:last-child{border-bottom:none}
+.ptitle{font-size:11px;font-weight:800;text-transform:uppercase;color:#6b7280;letter-spacing:.5px;margin-bottom:10px}
+.fgrp{margin-bottom:10px}
+.fgrp label{display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:4px}
+.fgrp input,.fgrp textarea,.fgrp select{width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit}
+.fgrp input:focus,.fgrp textarea:focus{outline:none;border-color:#1e40af;box-shadow:0 0 0 3px rgba(30,64,175,.1)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.center h2{font-size:14px;font-weight:800;padding:12px 16px;border-bottom:1px solid #e5e7eb;background:#f9fafb;border-radius:10px 10px 0 0;display:flex;align-items:center;gap:8px}
+.center h2 .done{margin-left:auto;font-size:11px;font-weight:700;color:#059669}
+.sec{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:14px}
+.sbody{padding:14px 16px}
+.q{margin-bottom:14px}
+.q .qt{font-size:13px;font-weight:700;color:#111827;margin-bottom:6px}
+.q .qt .req{color:#dc2626}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{padding:7px 12px;border:2px solid #d1d5db;background:#fff;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;color:#374151;transition:all .12s}
+.opt:hover{border-color:#1e40af;background:#eff6ff}
+.opt.sel{background:#1e40af;border-color:#1e40af;color:#fff}
+.note{background:#fefce8;border-left:4px solid #f59e0b;padding:8px 10px;border-radius:6px;font-size:12px;color:#713f12;margin-top:6px;line-height:1.45}
+.note.safety{background:#fef2f2;border-left-color:#dc2626;color:#7f1d1d;font-weight:600}
+.note.script{background:#eff6ff;border-left-color:#1e40af;color:#1e3a5f}
+.subq{margin:10px 0 2px 14px;padding-left:12px;border-left:3px solid #dbeafe}
+textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical}
+.checklist{list-style:none}
+.checklist li{padding:4px 0;font-size:12px;display:flex;gap:7px;align-items:center;color:#6b7280}
+.checklist li.ok{color:#059669;font-weight:600}
+.checklist li .dot{width:14px;height:14px;border-radius:50%;border:2px solid #d1d5db;display:inline-block;flex-shrink:0}
+.checklist li.ok .dot{background:#059669;border-color:#059669}
+.faqq{border-bottom:1px solid #f3f4f6;padding:7px 0;cursor:pointer}
+.faqq .fq{font-size:12px;font-weight:700;color:#1e40af}
+.faqq .fa{display:none;font-size:12px;color:#4b5563;margin-top:4px;line-height:1.45;white-space:pre-line}
+.faqq.open .fa{display:block}
+.actions{position:sticky;bottom:0;background:#fff;border-top:2px solid #e5e7eb;padding:12px 16px;display:flex;gap:10px;align-items:center;border-radius:0 0 10px 10px}
+.btn.go{background:#059669;color:#fff;flex:1;padding:12px;font-size:14px}
+.btn.go:disabled{background:#d1d5db;color:#6b7280;cursor:not-allowed}
+.btn.warn{background:#f59e0b;color:#fff}
+.btn.plain{background:#e5e7eb;color:#374151}
+.missing{font-size:11px;color:#dc2626;font-weight:600}
+#noteModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:20px}
+#noteModal.show{display:flex}
+.modal{background:#fff;border-radius:12px;max-width:640px;width:100%;max-height:85vh;display:flex;flex-direction:column}
+.modal h3{padding:14px 18px;border-bottom:1px solid #e5e7eb;font-size:15px}
+.modal pre{flex:1;overflow:auto;padding:16px 18px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;font-family:Menlo,Consolas,monospace;background:#f9fafb}
+.modal .mfoot{padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;gap:10px}
+.copied{color:#059669;font-weight:700;font-size:12px;align-self:center}
+.banner{background:#dc2626;color:#fff;padding:10px 16px;border-radius:8px;font-weight:700;font-size:13px;margin-bottom:12px;display:none}
+.banner.show{display:block}
+@media(max-width:1100px){.wrap{grid-template-columns:1fr}.panel.sticky{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div><h1>City Appliance — Call Intake</h1><div class="sub">Any order during the call. Everything checks at the end.</div></div>
+  <div class="hright">
+    <div class="feechip"><small>Fee</small><span id="feeAmt">—</span></div>
+    <select class="csr" id="csr"><option value="">Who's on the call?</option><option>Marie</option><option>Joe</option><option>Jake</option></select>
+    <button class="btn ghost" id="newCall">New call</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- LEFT: customer + payment -->
+  <div class="panel sticky" id="leftPanel">
+    <div class="psec">
+      <div class="ptitle">Customer</div>
+      <div class="frow">
+        <div class="fgrp"><label>First name</label><input data-c="first"></div>
+        <div class="fgrp"><label>Last name</label><input data-c="last"></div>
+      </div>
+      <div class="fgrp"><label>Phone</label><input data-c="phone" placeholder="(512) ..."></div>
+      <div class="fgrp"><label>Email</label><input data-c="email"></div>
+      <div class="fgrp"><label>Street address</label><input data-c="street"></div>
+      <div class="frow">
+        <div class="fgrp"><label>City</label><input data-c="cityTxt"></div>
+        <div class="fgrp"><label>ZIP</label><input data-c="zip"></div>
+      </div>
+      <div class="note script" style="margin-top:4px">Repeat the info back to the customer. A spelling mistake on an address sends the tech the wrong way.</div>
+    </div>
+    <div class="psec" id="custQs"></div>
+    <div class="psec" id="payQs"></div>
+  </div>
+
+  <!-- CENTER: the guided intake -->
+  <div class="center">
+    <div class="banner" id="safetyBanner"></div>
+    <div id="sections"></div>
+    <div class="sec">
+      <div class="actions">
+        <button class="btn go" id="reviewBtn" disabled>Review &amp; build job note</button>
+        <button class="btn warn" id="partialBtn" title="Builds a note from whatever you have — marked INCOMPLETE">Incomplete save</button>
+        <span class="missing" id="missTxt"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: coaching + checklist + FAQ -->
+  <div class="panel sticky">
+    <div class="psec">
+      <div class="ptitle">Call checklist</div>
+      <ul class="checklist" id="check"></ul>
+    </div>
+    <div class="psec">
+      <div class="ptitle">Reminders</div>
+      <div class="note script" style="margin-bottom:6px"><b>Text OK?</b> Ask if appointment confirmations by text are ok. Mention the confirmation text will ask for a photo of the model number tag.</div>
+      <div class="note" style="margin-bottom:6px"><b>Set expectations.</b> Pitch a booking 2-3 days out first, even if the schedule is slow. Do NOT promise exact parts on the truck. Promise preparation and expertise, not inventory.</div>
+      <div class="note"><b>Scheduling.</b> Max 6-7 jobs per tech per day. Same-day only for a true emergency (no-cool fridge, active leak that can't be shut off) AND a tech already in the area. Before booking, look for a job already booked in that area and aim for that day.</div>
+    </div>
+    <div class="psec">
+      <div class="ptitle">Customer questions &amp; pushback</div>
+      <div id="faqs"></div>
+    </div>
+  </div>
+</div>
+
+<div id="noteModal"><div class="modal">
+  <h3 id="noteTitle">Job note</h3>
+  <pre id="noteText"></pre>
+  <div class="mfoot">
+    <button class="btn go" id="copyBtn">Copy note</button>
+    <span class="copied" id="copiedMsg"></span>
+    <button class="btn plain" id="closeModal" style="margin-left:auto">Close</button>
+  </div>
+</div></div>
+
+<script>
+/* ============ CONFIG — generated from intake-question-tree.md (master, 2026-11-07) ============ */
+const FEES = {
+  cities: {
+    "San Marcos":{fee:125,note:"Any available day"},
+    "Kyle":{fee:125,note:"Prefer Mon/Wed/Fri mornings"},
+    "Buda":{fee:125,note:"Prefer Mon/Wed/Fri mornings"},
+    "New Braunfels":{fee:125,note:"Prefer Mon/Wed/Fri afternoons"},
+    "Lockhart":{fee:125,note:"Mon/Wed/Fri. May be more further east toward Dale, TX"},
+    "Kingsbury":{fee:125,note:"Mon/Wed/Fri. May be more if further out"},
+    "Wimberley":{fee:125,note:"Tue/Thu mornings. May be more if further out"},
+    "Canyon Lake":{fee:165,note:"Wed/Fri afternoons only"},
+    "Driftwood":{fee:145,note:"Tue/Thu mornings"},
+    "Dripping Springs":{fee:165,note:"Tue/Thu mornings only"},
+    "Other":{fee:null,note:"Get the ZIP to look up the fee. If no fee comes up, save their info and tell them the scheduling team will call back to complete the booking."}
+  },
+  premiumBrands:["Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram"],
+  premiumFee:50, builtInFridgeFee:50
+};
+const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
+const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
+
+/* Question factory helpers */
+let _id=0; const Q=(q,opts,extra)=>Object.assign({id:"q"+(++_id),type:opts?"single":"text",q,opts:opts||null},extra||{});
+
+/* ---------- DIAGNOSIS trees per appliance ---------- */
+function washer(){
+  const stacked=Q("Is the washer a stacked unit or separate machines?",["Machines separated (side by side)","Stacked Unit (dryer on top of washer)"],{req:1,
+    notes:{"Stacked Unit (dryer on top of washer)":{t:"If the dryer needs to be removed to perform the repair, a labor surcharge can apply. Note clearly as STACKED UNIT. Tell the customer the stacked setup can affect labor.",k:"warn",flag:"STACKED UNIT — labor surcharge may apply"}}});
+  const load=Q("Front-load or top-load?",["Top Load","Front Load"],{req:1,showIf:[stacked.id,["Machines separated (side by side)"]]});
+  const issue=Q("What's the main issue?",["Not starting / no power","Leaking water","Not spinning or agitating","Not draining / water left in drum","Excessive noise or vibration","Not filling with water","Keeps filling / overfilling","Error code on display","Door or lid issue","Burning smell","Clothes coming out too wet","Other"],{req:1,main:1});
+  const deadQ=Q("Completely dead, or has power?",["Completely dead — no lights or display","Has power / display on but won't start","Starts, then stops mid-cycle"],{req:1,showIf:[issue.id,["Not starting / no power"]],
+    notes:{"Completely dead — no lights or display":{t:"Have they confirmed the breaker and outlet?",k:"warn"}}});
+  const drainFirst=Q("Standing water in the drum, or clothes soaked with the drum empty?",["Standing water in the drum","Clothes soaked but drum empty","Both"],{req:1,showIf:[issue.id,["Not draining / water left in drum"]],
+    note:"Customers often say \"not draining\" when the clothes come out soaked. If the drum is empty, it's a spin problem — use the Clothes coming out too wet questions.",
+    notes:{"Clothes soaked but drum empty":{t:"Drum empty = spin problem, not drain. Answer the spin questions: does the final spin run fast, barely, or not at all?",k:"script"}}});
+  const leakWhen=Q("When is it leaking?",["During fill","During wash","During spin","While draining","Even when it isn't running","Other"],{req:1,showIf:[issue.id,["Leaking water"]]});
+  const leakWhere=Q("Where is it leaking?",["Front","Back","Water valve or hoses","Underneath / floor below","Detergent drawer area","Unsure"],{req:1,showIf:[issue.id,["Leaking water"]]});
+  const leakAmt=Q("How much water?",["A lot","A little"],{showIf:[issue.id,["Leaking water"]]});
+  const fillQ=Q("Keeps filling — which is it?",["Won't stop filling (only when on)","Keeps filling even when the unit is OFF","Overfilling"],{req:1,showIf:[issue.id,["Keeps filling / overfilling"]]});
+  const wetQ=Q("Does the final spin run fast?",["Spins fast but clothes stay soaked","Barely spins","Doesn't spin at all","Cycle stops before the spin finishes"],{req:1,showIf:[issue.id,["Clothes coming out too wet"]]});
+  const water=Q("Is there still water in the drum right now?",["Yes — drum is full","Partially drained","No — drum is empty"],{req:1,showIf:[issue.id,["Leaking water","Not draining / water left in drum","Not spinning or agitating","Keeps filling / overfilling"]],
+    notes:{"Yes — drum is full":{t:"Ask if they can manually drain it before the appointment. If not: WATER IN DRUM — CUSTOMER CANNOT DRAIN. Tech needs a wet/dry vac and extra time. Additional charge possible — note for manager review.",k:"warn",flag:"WATER IN DRUM — CUSTOMER CANNOT DRAIN"},
+            "Partially drained":{t:"Ask if they can manually drain the rest before the appointment.",k:"warn"}}});
+  return {name:"Washer",qs:[stacked,load,issue,deadQ,drainFirst,leakWhen,leakWhere,leakAmt,fillQ,wetQ,water]};
+}
+function dryer(){
+  const stacked=Q("Is this a stacked unit (dryer on top of washer)?",["No — separate machines","Yes — on top of a washer"],{req:1,
+    notes:{"Yes — on top of a washer":{t:"Stacked configuration: note clearly as STACKED UNIT; a labor surcharge can apply.",k:"warn",flag:"STACKED UNIT — labor surcharge may apply"}}});
+  const fuel=Q("Gas or electric?",["Gas","Electric"],{req:1,note:"GAS dryers: always confirm. Incorrect fuel type = wrong parts. Never assume."});
+  const gasType=Q("What fuel type?",["Natural Gas","Propane"],{req:1,showIf:[fuel.id,["Gas"]]});
+  const issue=Q("What is the main issue?",["Heating Issue","Excessive noise or vibration","Burning smell","Error code on display","Drum not spinning","Not starting / no power","Other"],{req:1,main:1,
+    note:'Banned phrase: "not drying." Write specifically: "drum spins but no heat" or "heats but takes 3 cycles to dry a normal load."'});
+  const heat=Q("Heating issue — which?",["Not heating","Overheating","Takes multiple cycles to dry a load"],{req:1,showIf:[issue.id,["Heating Issue"]]});
+  const heat2=Q("Not heating — which fits best?",["Clothes remain cold/wet","Only works on timed dry, not other settings"],{showIf:[heat.id,["Not heating"]]});
+  const burn=Q("What does the smell resemble?",["Burning lint or dust","Burning rubber or belt","Electrical / burning wires","GAS SMELL"],{req:1,showIf:[issue.id,["Burning smell"]],
+    notes:{"GAS SMELL":{t:"GAS SMELL — SAFETY: turn off the gas supply valve behind the dryer, open windows, call the gas company immediately. Do NOT schedule until the gas company has cleared the home.",k:"safety",flag:"GAS SMELL — do not schedule until gas company clears the home"}}});
+  const dead=Q("Completely dead or has power?",["Completely dead — no lights","Has power but won't start","Starts then immediately stops"],{req:1,showIf:[issue.id,["Not starting / no power"]],
+    note:"Electric dryers use a double breaker — check both sides in the panel. Confirm the door is firmly closed; the dryer won't start if the door switch isn't fully engaged."});
+  const vent=Q("When was the dryer vent last cleaned?",["Recently — within 6 months","Not sure / been a while","Never cleaned"],{req:1,
+    note:"A clogged vent is the most common cause of slow drying and overheating, and a fire hazard. Quick check: the exterior flap should open with warm airflow when running. Vent cleaning can be offered as a discounted add-on — needs extra time when scheduling."});
+  return {name:"Dryer",qs:[stacked,fuel,gasType,issue,heat,heat2,burn,dead,vent]};
+}
+function fridge(){
+  const style=Q("What style is the refrigerator?",["Top freezer","Bottom freezer / French door","Side by side","Single door (no freezer)","Built In","Not sure"],{req:1,
+    notes:{"Built In":{t:"Built-in units incur the premium service call fee: +$50.",k:"warn",flag:"BUILT-IN — premium fee +$50"}}});
+  const issue=Q("What is the main issue?",["Not cooling — fridge, freezer, or both","Leaking water inside or on floor","Ice buildup on interior floor","Making unusual noise","Ice maker not working","Water dispenser not working","Frost or ice buildup on walls/ceiling","Door seal issue","Error code on display","Running constantly","Other"],{req:1,main:1});
+  const coolSec=Q("Which section?",["Fridge only — freezer still cold","Freezer only — fridge still cool","Both sections warm"],{req:1,showIf:[issue.id,["Not cooling — fridge, freezer, or both"]]});
+  const plugged=Q("Is it currently plugged in and running?",["Yes — plugged in and running","No — it has been unplugged","Not sure"],{req:1,showIf:[issue.id,["Not cooling — fridge, freezer, or both"]],
+    notes:{"No — it has been unplugged":{t:"The unit MUST run at least 6 hours before the appointment for accurate diagnosis. Same/next-day: ask them to plug it in NOW. Future appointments: remind the morning of. Morning slots: running at least 3 hours before the window. Exception: constant clicking or loud compressor — escalate to the service manager before advising.",k:"safety",flag:"UNIT WAS UNPLUGGED — must run 6+ hrs before visit"},
+            "Not sure":{t:"Confirm it's plugged in and running. Needs 6+ hours running before the visit for accurate diagnosis.",k:"warn"}}});
+  const iceWhere=Q("Ice buildup — where exactly?",["Front center of freezer floor","Along the back wall and floor","Entire interior floor","Around the drain area at the back"],{req:1,showIf:[issue.id,["Ice buildup on interior floor"]],
+    note:"Interior-floor ice usually means interior access. Have the customer ready to clear the freezer contents if buildup is significant."});
+  const imWhere=Q("Ice maker — in this fridge's freezer section, or standalone?",["Freezer section — top freezer","Freezer section — bottom freezer / French door","Standalone ice maker (separate appliance)"],{req:1,showIf:[issue.id,["Ice maker not working"]]});
+  const food=Q("Should the customer clear food before the appointment?",["Not likely — exterior work only","Yes — ice maker repair","Yes — frost/ice on back wall (defrost)","Yes — ice or water on interior floor","Yes — interior light replacement","Not sure — confirm with technician"],{
+    note:'Script: "To help our tech get right to work, it would be a big help if you could remove the food from the [freezer / refrigerator] the morning of the appointment. We will get everything back up and running as quickly as possible."'});
+  return {name:"Refrigerator",qs:[style,issue,coolSec,plugged,iceWhere,imWhere,food]};
+}
+function freezer(){
+  const type=Q("Chest or upright?",["Chest (opens from top)","Upright (opens from front)"],{req:1});
+  const issue=Q("What is the main issue?",["Not cooling / items thawing","Leaking water","Ice buildup on interior floor or walls","Unusual noise","Not turning on","Running constantly","Error code","Other"],{req:1,main:1});
+  return {name:"Freezer",qs:[type,issue]};
+}
+function dishwasher(){
+  const issue=Q("What is the main issue?",["Leaking water","Not starting / no power","Not cleaning dishes properly","Not draining — standing water","Not filling with water","Unusual noise during cycle","Door latch issue","Error code on display","Burning smell","Film or residue on dishes","Fills and drains but does not wash","Other"],{req:1,main:1});
+  const leakWhere=Q("Where is the water appearing?",["Front of door / door area","Underneath the unit","Under the sink area","All around the unit"],{req:1,showIf:[issue.id,["Leaking water"]]});
+  const leakWhen=Q("When does it happen?",["During fill","During wash","During drain","After the cycle ends","Even when the unit is off"],{req:1,showIf:[issue.id,["Leaking water"]]});
+  const filter=Q("When was the dishwasher filter last cleaned?",["Recently — within the last month","Never cleaned","Not sure"],{req:1,
+    note:"A clogged filter is the most common cause of poor cleaning. Most have a removable filter at the bottom of the tub: remove, rinse under hot water, reinstall. Quick thing to try before we arrive."});
+  return {name:"Dishwasher",qs:[issue,leakWhere,leakWhen,filter]};
+}
+function ovenRange(){
+  const unit=Q("Range, cooktop only, or wall oven?",["Range/Stove — burners and oven in one unit","Cooktop only — burners, no oven","Wall Oven — built-in, no burners"],{req:1,
+    note:'NEVER guess this. Wrong answer = tech arrives for the wrong job. Script: "Just to confirm — does your oven have burners on top that are part of the same unit, or is the oven built into the wall separately?"',
+    notes:{"Cooktop only — burners, no oven":{t:"Switch the appliance to Cooktop/Stovetop.",k:"script"},"Wall Oven — built-in, no burners":{t:"Switch the appliance to Wall Oven.",k:"script"}}});
+  const fuel=Q("Gas, electric, or induction?",["Gas","Electric","Induction"],{req:1,showIf:[unit.id,["Range/Stove — burners and oven in one unit"]],
+    note:"NEVER assume. Bringing an igniter for an electric oven is a wasted trip. Always confirm."});
+  const gIssue=Q("Gas range — main issue?",["Burner will not regulate (stuck high or low)","Burner(s) not lighting","Burner will not turn off","Not heating on bake or broil","Burning smell or smoke","Self-clean issue or door locked","Temperature inaccurate"],{req:1,main:1,showIf:[fuel.id,["Gas"]]});
+  const ign=Q("Does the igniter click when the knob is turned?",["Yes, but not igniting","No clicking at all","Clicks on another burner but not this one"],{req:1,showIf:[gIssue.id,["Burner(s) not lighting"]],
+    note:'Quick check: make sure the burner cap is centered and seated. An off-center cap is the most common reason a gas burner won\'t ignite after cleaning. Ask: "Has the burner cap been moved recently — cleaning or during cooking?"'});
+  const stuckTxt=Q("Which burner, and what is happening exactly?",null,{req:1,showIf:[gIssue.id,["Burner will not turn off"]],
+    note:"GAS BURNER STUCK ON — SAFETY: turn off the gas supply valve behind/below the range immediately. Do not leave it unattended. We will prioritize scheduling.",safety:1,flag:"GAS BURNER STUCK ON — prioritize scheduling"});
+  const smoke=Q("What does it most resemble?",["Burning food or residue (not unusual)","Burning plastic or coating","Electrical burning smell","Gas smell with no food burning"],{req:1,showIf:[gIssue.id,["Burning smell or smoke"]],
+    notes:{"Gas smell with no food burning":{t:"GAS SMELL WHEN OFF — SAFETY: turn off the gas supply immediately, open windows, leave the home, consider calling the gas company.",k:"safety",flag:"GAS SMELL — safety protocol given"}}});
+  const eIssue=Q("Electric range — main issue?",["Temperature inaccurate","Not maintaining the set temperature","No bake or broil","Burner issue (top)"],{req:1,main:1,showIf:[fuel.id,["Electric"]]});
+  const eTemp=Q("Burner not staying on the setting?",["Stays on high even when set low","Won't reach high setting","Only half the burner works"],{showIf:[eIssue.id,["Temperature inaccurate","Burner issue (top)"]]});
+  const genIssue=Q("Main issue (if unit type unclear)?",["Not heating or baking unevenly","Not starting / no power","Electronic or Control Board"],{showIf:[unit.id,["__none__"]]});
+  const bakeBroil=Q("Bake or broil function?",["Bake","Broil"],{showIf:[eIssue.id,["No bake or broil"]]});
+  const board=Q("Control board — what fits?",["Buttons unresponsive","Display completely blank","Some functions work, some don't","Display lights but buttons won't respond","Showing an error code","Beeping constantly / flashing","Clock resets randomly / loses power"],{showIf:[eIssue.id,["Not maintaining the set temperature"]],optional:1});
+  const indIssue=Q("Induction — main issue?",["Not detecting cookware","One zone not heating","Error code","Cracked glass","Controls unresponsive"],{req:1,main:1,showIf:[fuel.id,["Induction"]],
+    note:"Induction needs magnetic cookware. Quick check: if a fridge magnet won't stick to the pan bottom, the pan is the problem, not the cooktop."});
+  return {name:"Oven/Range",qs:[unit,fuel,gIssue,ign,stuckTxt,smoke,eIssue,eTemp,bakeBroil,board,indIssue,genIssue]};
+}
+function wallOven(){
+  const issue=Q("What is the main issue?",["Not starting / no power","Door not closing or sealing","Bake or broil not working","Self-clean issue / door locked after self-clean","Burning smell","Error code on display","Temperature inaccurate","Other"],{req:1,main:1,
+    note:"Wall ovens are electric and hardwired on a double breaker — for no-power, have them check both sides in the panel.",
+    notes:{"Self-clean issue / door locked after self-clean":{t:"Locked after self-clean: let it cool completely (2-3 hrs minimum). Still locked when cool = latch failure, schedule as normal. ELECTRICAL BURNING SMELL: turn off the breaker immediately and don't use until inspected.",k:"warn"}}});
+  const elem=Q("Element visibly damaged?",["Blistered or split spot","Glows only partially","Looks fine"],{showIf:[issue.id,["Bake or broil not working"]],
+    note:"A quick look at the bake element catches most failures."});
+  const temp=Q("Preheats then drifts, or never reaches temp?",["Preheats then drops","Never gets there"],{showIf:[issue.id,["Temperature inaccurate"]]});
+  return {name:"Wall Oven",qs:[issue,elem,temp]};
+}
+function cooktop(){
+  const type=Q("What type of cooktop?",["Gas","Electric coil top","Electric smooth top (glass)","Induction"],{req:1});
+  const issue=Q("What's the main issue?",["Burner not lighting","Burner will not turn off","Burner will not regulate","Cracked glass surface","Control knobs not working","Error code on display","Gas or burning smell","Other"],{req:1,main:1});
+  const click=Q("Does it click when the knob is turned?",["Yes — clicks but no flame","No clicking at all","Inconsistent"],{req:1,showIf:[issue.id,["Burner not lighting"]],
+    note:"Quick check: burner cap centered and seated — most common cause after cleaning. Ask if the cap was recently moved."});
+  const which=Q("Which burner?",null,{showIf:[issue.id,["Burner not lighting","Burner will not turn off","Burner will not regulate"]]});
+  const stuck=Q("Burner stuck on — confirm safety steps given",["Customer advised — gas valve off"],{showIf:[issue.id,["Burner will not turn off"]],
+    note:"GAS BURNER STUCK ON — SAFETY: turn off the gas supply valve behind/below the unit immediately.",safety:1,flag:"GAS BURNER STUCK ON"});
+  const crack=Q("Cracked glass — how severe?",["Hairline — barely visible","Visible crack across surface","Large crack — pieces separated"],{req:1,showIf:[issue.id,["Cracked glass surface"]],
+    note:"CRACKED GLASS — SAFETY: liquids can seep under cracked glass and create an electrical hazard. Best not to use until repaired.",safetyNote:1});
+  return {name:"Cooktop/Stovetop",qs:[type,issue,click,which,stuck,crack]};
+}
+function microwave(){
+  const mount=Q("Over-the-range, wall mounted, or countertop?",["Over-the-range (above stove)","Wall mounted (set in wall)","Countertop unit"],{req:1});
+  const issue=Q("What is the main issue?",["Not heating","Making a noise","Turns on when the door is shut","Turns on when the door is opened","Error code"],{req:1,main:1,
+    notes:{"Turns on when the door is shut":{t:"SAFETY: advise unplugging it now. A door switch fault can run the unit unsafely.",k:"safety",flag:"MICROWAVE DOOR SWITCH FAULT — advised unplug"},
+           "Turns on when the door is opened":{t:"SAFETY: advise unplugging it now. A door switch fault can run the magnetron with the door open.",k:"safety",flag:"MICROWAVE DOOR SWITCH FAULT — advised unplug"}}});
+  return {name:"Microwave",qs:[mount,issue]};
+}
+function wineFridge(){
+  const issue=Q("What is the main issue?",["Not cooling / too warm","Leaking water","Excessive noise","Not turning on","Frost buildup","Running constantly","Error code","Other"],{req:1,main:1});
+  return {name:"Wine Fridge",qs:[issue]};
+}
+function iceMaker(){
+  const issue=Q("What is the main issue?",["Not making ice","Bad taste or smell in ice","Leaking water","Unusual noise","Making too much ice / overflowing","Not draining","Error code","Other"],{req:1,main:1});
+  const filt=Q("When was the water filter last changed?",["Recently — within 6 months","Overdue — more than 12 months","Doesn't have a filter","Not sure"],{req:1,
+    note:"A saturated filter is the most common cause of bad-tasting ice and low production. Replacing it is a quick first step — ask if they know where it is."});
+  return {name:"Ice Maker",qs:[issue,filt]};
+}
+function disposal(){
+  const issue=Q("What is the main issue?",["Not turning on — silent or hums but doesn't spin","Leaking","Grinding or jamming","Draining slowly","Burning smell","Other"],{req:1,main:1,
+    notes:{"Burning smell":{t:"SAFETY: turn it off at the wall switch and stop using it. Humming plus burning smell = jammed motor.",k:"safety",flag:"DISPOSAL JAMMED MOTOR — advised off"}}});
+  const reset=Q("Has the reset button on the bottom been tried?",["Yes — tried, didn't work","Not yet"],{req:1,showIf:[issue.id,["Not turning on — silent or hums but doesn't spin"]],
+    note:"Quick thing to try: press the small red/black reset button on the bottom center. Often fixes it after a jam or overload. Then try the switch again."});
+  return {name:"Garbage Disposal",qs:[issue,reset]};
+}
+function otherApp(){
+  const d=Q("Describe the appliance and the issue",null,{req:1,main:1});
+  return {name:"Other",qs:[d]};
+}
+const DIAG_APPLIANCES=[washer(),dryer(),fridge(),freezer(),dishwasher(),ovenRange(),wallOven(),cooktop(),microwave(),wineFridge(),iceMaker(),disposal(),otherApp()];
+
+/* ---------- INSTALL trees ---------- */
+function inst(name,qs){return {name,qs};}
+const INSTALL_APPLIANCES=(()=>{
+  const w1=Q("Does the customer have hoses?",["Yes","No"],{req:1});
+  const w2=Q("Will the unit need to be moved from another area?",["Yes","No"],{req:1});
+  const w3=Q("Are there stairs?",["Yes","No"],{req:1,showIf:[w2.id,["Yes"]]});
+  const d1=Q("Gas or electric?",["Gas","Electric"],{req:1});
+  const d2=Q("Does the customer have a gas line for the unit?",["Yes","No"],{req:1,showIf:[d1.id,["Gas"]],note:"Do they know the exact size of the line fittings?"});
+  const d3=Q("What kind of wall outlet?",["4 Prong (usually a black cord)","3 Prong (usually a gray cord)"],{req:1,showIf:[d1.id,["Electric"]]});
+  const d4=Q("Will they need a cord?",["Yes","No"],{req:1,showIf:[d1.id,["Electric"]]});
+  const d5=Q("Do they need a vent hose?",["Yes","No"],{req:1,showIf:[d1.id,["Electric","Gas"]]});
+  const d6=Q("How long?",null,{showIf:[d5.id,["Yes"]]});
+  const wo1=Q("Have they measured the wall cutout?",["Yes","No"],{req:1,notes:{"No":{t:"If the trim needs to be cut, an additional fee may apply.",k:"warn",flag:"WALL CUTOUT UNMEASURED — trim cut fee possible"}}});
+  const r1=Q("Gas or electric?",["Gas","Electric"],{req:1});
+  const r2=Q("Does the customer have installation supplies (gas line)?",["Yes","No"],{req:1,showIf:[r1.id,["Gas"]]});
+  const r3=Q("Does the customer have a cord?",["Yes","No"],{req:1,showIf:[r1.id,["Electric"]]});
+  const r4=Q("3 prong or 4 prong?",["3 Prong (gray cord)","4 Prong (black cord)"],{req:1,showIf:[r1.id,["Electric"]]});
+  const s1=Q("Gas or electric?",["Gas","Electric"],{req:1});
+  const s2=Q("Will they need a new gas line?",["Yes","No"],{req:1,showIf:[s1.id,["Gas"]]});
+  const s3=Q("What kind of wall outlet?",["3 Prong (gray cord)","4 Prong (black cord)"],{req:1,showIf:[s1.id,["Electric"]]});
+  const s4=Q("Will they need a new cord provided?",["Yes","No"],{req:1,showIf:[s1.id,["Electric"]]});
+  const f1=Q("Does the customer need a water line?",["Yes","No"],{req:1,notes:{"No":{t:"Hoses are $25.",k:"warn"}}});
+  const dw1=Q("Does the appliance need to be moved from another room or outside?",["Yes","No"],{req:1,
+    notes:{"Yes":{t:"Larger appliance moves may add a fee. Have the customer send pictures of the appliance and where it will be installed.",k:"warn",flag:"APPLIANCE MOVE — possible added fee, photos requested"}}});
+  const dw2=Q("Appliance to be moved?",["Refrigerator","Large oven"],{showIf:[dw1.id,["Yes"]],
+    notes:{"Refrigerator":{t:"If coming from outside and doors must be removed, an additional fee applies — fully determined on site.",k:"warn"}}});
+  return [
+    inst("Washer",[w1,w2,w3]),
+    inst("Dryer",[d1,d2,d3,d4,d5,d6]),
+    inst("Dishwasher",[dw1,dw2]),
+    inst("Wall Oven",[wo1]),
+    inst("Range/Stove",[r1,r2,r3,r4]),
+    inst("Stovetop",[s1,s2,s3,s4]),
+    inst("Refrigerator",[f1])
+  ];
+})();
+
+/* ---------- Shared follow-ups (diagnosis) ---------- */
+const SH_brand=Q("Brand of appliance",BRANDS,{req:1});
+const SH_brandOther=Q("Brand (other)",null,{showIf:[SH_brand.id,["Other"]]});
+const SH_tight=Q("Is the appliance in a tight space or hard-to-access area?",["Yes","No","Unsure"],{req:1,
+  note:'"To help our tech get right to work, please make sure the area around the appliance is clear before he arrives. If it is in a tight spot, text us a quick photo and we will pass it along."',
+  notes:{"Yes":{t:"Ask for a photo of the space by text so we can prepare.",k:"script",flag:"TIGHT ACCESS — photo requested"}}});
+const SH_model=Q("Model & serial number",null,{
+  note:'Expert prep — for appointments 24+ hrs out, always try: "To give you the best chance of a one-visit repair, can I get the model and serial number? It lets our tech check parts before he heads your way."'});
+const SH_parts=Q("Did the customer describe any broken parts?",["Yes","No"],{req:1,notes:{"Yes":{t:"Note it on the job; we may need to order the part.",k:"warn",flag:"BROKEN PART DESCRIBED — may need to order"}}});
+const SH_workedOn=Q("Has anyone worked on this appliance recently?",["Yes — City Appliance","Yes — someone else","No"],{req:1,
+  notes:{"Yes — City Appliance":{t:"Possible warranty return: 1 yr parts, 90 days labor. Look up the original job and check the dates before quoting a fee.",k:"warn",flag:"POSSIBLE WARRANTY RETURN — check original job dates"}}});
+const SH_age=Q("Roughly how old is the appliance?",["Under 5 years","5-10 years","Over 10 years","Not sure"],{
+  note:"Capture the age only. Don't tell the customer whether it's worth fixing — that call belongs to the tech on site."});
+const SH_err=Q("Any error code showing? What is it?",null,{});
+const SH_dur=Q("How long has this been happening?",["Started today","This week","A few weeks","A month or more"],{req:1});
+const SH_onset=Q("Sudden or gradual?",["Suddenly","Gradually","Not sure"],{});
+const SH_every=Q("Every time, or on and off?",["Every time","Intermittent"],{
+  notes:{"Intermittent":{t:"Warn the customer the issue may not act up during the visit. Ask them to note what they were doing when it last happened.",k:"warn"}}});
+const SH_words=Q("Customer's own words — describe the issue",null,{req:1,
+  note:"The more specific, the better prepared the tech. Include when it happens, where, how long, anything that changed recently (moved, cleaned, overloaded)."});
+const SHARED=[SH_brand,SH_brandOther,SH_tight,SH_model,SH_parts,SH_workedOn,SH_age,SH_err,SH_dur,SH_onset,SH_every,SH_words];
+
+/* ---------- Customer / payment questions (left panel) ---------- */
+const CU_ret=Q("New or returning customer?",["New","Returning"],{req:1,
+  notes:{"Returning":{t:"Look them up in HCP by name, phone, or address before creating anything new. Check for prior work on this appliance — warranty may apply (1 yr parts, 90 days labor).",k:"script"}}});
+const CU_city=Q("What city are they in?",Object.keys(FEES.cities),{req:1,note:"Fee script: "+FEE_SCRIPT});
+const PAY_who=Q("Who is paying for the repairs?",["Home Owner","Property Manager / Landlord","Tenant (can't authorize bills)"],{req:1,
+  note:'"Got it. Before we lock this in, are you the resident owner living at the home, or are you a property manager or landlord taking care of it for someone else?"'});
+const PAY_onsite=Q("Will someone over 18 and able to pay be there on the day of service?",["Yes, and able to pay","Yes, over 18 but not able to pay","No"],{req:1,showIf:[PAY_who.id,["Home Owner"]],
+  notes:{"Yes, over 18 but not able to pay":{t:'CARD ON FILE: "Since you won\'t be there to handle payment yourself, we do require a credit card securely on file before we head out. Our technician can still complete the work with whoever is home, and we process the final invoice directly with you as soon as the job is wrapped up. I\'m sending a secure text link right now — do you see it coming through?" INTERNAL: send the authorization link immediately. Do NOT dispatch until the card is on file.',k:"warn",flag:"CARD ON FILE REQUIRED — do not dispatch until secured"},
+          "No":{t:'CARD ON FILE: "Since you won\'t be there to handle payment yourself, we do require a credit card securely on file before we head out. Our technician can still complete the work with whoever is home, and we process the final invoice directly with you as soon as the job is wrapped up. I\'m sending a secure text link right now — do you see it coming through?" INTERNAL: send the authorization link immediately. Do NOT dispatch until the card is on file.',k:"warn",flag:"CARD ON FILE REQUIRED — do not dispatch until secured"}}});
+const PAY_tenant=Q("Can we get the tenant's name and phone number?",["Yes","No"],{req:1,showIf:[PAY_who.id,["Property Manager / Landlord"]],
+  notes:{"No":{t:'NO-SHOW POLICY: "No problem at all. Just keep in mind that if the tenant isn\'t home when our technician arrives, or makes him wait an unreasonable amount of time, we do have a $50 no-show fee to cover his time. Do you agree to that?" INTERNAL: if they decline tenant info, note "Landlord assumes responsibility for tenant presence / Approved $50 potential no-show fee".',k:"warn",flag:"LANDLORD ASSUMES TENANT PRESENCE — $50 no-show fee approved"},
+          "Yes":{t:'PM BILLING SETUP: book using the TENANT\'s name, phone, and address as the primary profile. Separately note the PM\'s name, email, phone in the job notes. After booking, create the PM profile in HCP and set them as the "Bills To" contact on the tenant\'s profile. Say: "Perfect, I\'ve got the property address and the tenant\'s details so our team can coordinate with them directly. Invoices and repair authorizations will go straight to you."',k:"script"}}});
+const PAY_tenantInfo=Q("Tenant name and phone (or PM/landlord notes)",null,{showIf:[PAY_who.id,["Property Manager / Landlord"]]});
+const PAY_preauth=Q("Pre-authorized repair limit (exact $ or \"Diagnostic Only\")",null,{showIf:[PAY_who.id,["Property Manager / Landlord"]],
+  note:'"We charge the diagnostic fee upfront to secure your spot, and 100% of it goes toward your repair. We\'ll send a secure link to keep a card on file. We also ask for a pre-authorized repair limit so if our tech has the part on the truck he can fix it on the spot. Most customers approve between $250 and $350 — what amount are you comfortable authorizing today?"'});
+const PAY_llinfo=Q("Landlord / property manager name and phone",null,{req:1,showIf:[PAY_who.id,["Tenant (can't authorize bills)"]],
+  note:'"Got it. Since you\'re renting, we\'ll just need the landlord or property manager\'s name and phone number. We always reach out to them directly to approve any repair costs before we do the work, that way you aren\'t stuck with the bill. Do you have their number handy?" INTERNAL: log them as the primary billing contact later so the charge link goes to the landlord, not the tenant.'});
+const PAY_fee=Q("Did you confirm the diagnostic fee with the customer?",["Yes","No"],{req:1});
+const PAY_slot=Q("Slot the customer was told",["AM","PM"],{req:1});
+const PAY_text=Q("OK to send appointment confirmations by text?",["Yes","No"],{req:1,
+  notes:{"Yes":{t:"Tell them the confirmation text will ask for a photo of the model number tag, sent back by text.",k:"script"}}});
+const CUST_QS=[CU_ret,CU_city];
+const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,PAY_fee,PAY_slot,PAY_text];
+
+const FAQS=[
+["What does the service call fee cover?","It covers a complete diagnosis of the appliance issue and an estimate for the repair. The fee is waived if the customer approves a repair estimate."],
+["Will the service call be waived?","Yes — it's waived when you move forward with the repair."],
+["\"Just give me a ballpark for a pump replacement?\"","\"I completely understand wanting to budget for it. The challenge is that on your specific model, a draining issue could be the pump, a clogged line, or even a control board glitch. Instead of guessing and giving you a wrong number, we send the tech out to do a full diagnostic. He'll give you a firm 'Total Fix' price before he starts any work. If you decide the repair doesn't make sense, you're only out the diagnostic fee.\""],
+["What payment methods do you accept?","Online via the customer portal, credit card over the phone, and a 5% cash discount."],
+["How does the repair process work?","Tech visits and diagnoses, you get a detailed estimate, and on approval the service call fee is waived and the repair proceeds."],
+["How long does a repair take?","Timeframes vary. We gather info beforehand to aim for a first-visit fix; techs carry a wide variety of parts, and ordered parts usually arrive within a few days."],
+["What appliances do we repair?","Washers, dryers, water heaters, stoves, ranges, wall ovens, refrigerators, freezers, and built-in microwaves. Not serviced: vacuums, A/C units, TVs. No parts sales."],
+["Do we do installations?","Yes: dishwashers, washers, dryers, microwaves, ranges/stoves, and wall ovens. Refrigerators need to be in place — we hook them up."],
+["Do we sell appliances?","Not currently."],
+["Where are we located?","Based in San Marcos, serving the surrounding areas. 512-392-2343. Slots: 9-12, 12-3, 2-5."]
+];
+
+/* ============ STATE & RENDERING ============ */
+const LS="cityapp.intake.v1";
+let S=load();
+function blank(){return {ans:{},cust:{},csr:""};}
+function load(){try{return JSON.parse(localStorage.getItem(LS))||blank();}catch(e){return blank();}}
+function save(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
+
+const $=id=>document.getElementById(id);
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+function visible(q){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(S.ans[dep]); }
+function currentAppliance(){ const list = S.ans.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===S.ans.appliance)||null; }
+
+function activeQuestions(){
+  const out=[];
+  const app=currentAppliance();
+  if(app) app.qs.forEach(q=>{ if(visible(q)) out.push(q); });
+  if(S.ans.svc==="Diagnosis" && app) SHARED.forEach(q=>{ if(visible(q)) out.push(q); });
+  CUST_QS.forEach(q=>{ if(visible(q)) out.push(q); });
+  PAY_QS.forEach(q=>{ if(visible(q)) out.push(q); });
+  return out;
+}
+
+function renderQ(q){
+  let h='<div class="q" id="w_'+q.id+'"><div class="qt">'+esc(q.q)+(q.req?' <span class="req">*</span>':'')+'</div>';
+  if(q.type==="single"){
+    h+='<div class="opts">'+q.opts.map(o=>'<button class="opt'+(S.ans[q.id]===o?' sel':'')+'" data-q="'+q.id+'" data-v="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div>';
+  } else {
+    h+='<textarea class="qtext" data-tq="'+q.id+'" placeholder="Type...">'+esc(S.ans[q.id]||"")+'</textarea>';
+  }
+  if(q.note) h+='<div class="note'+(q.safety||q.safetyNote?' safety':'')+(q.note.startsWith('"')?' script':'')+'">'+esc(q.note)+'</div>';
+  const sel=S.ans[q.id];
+  if(q.notes && sel && q.notes[sel]) h+='<div class="note '+(q.notes[sel].k==='safety'?'safety':q.notes[sel].k==='script'?'script':'')+'">'+esc(q.notes[sel].t)+'</div>';
+  h+='</div>';
+  return h;
+}
+
+function render(){
+  $("csr").value=S.csr||"";
+  // left customer inputs
+  document.querySelectorAll('[data-c]').forEach(el=>{ el.value=S.cust[el.dataset.c]||""; });
+  // customer & pay questions
+  $("custQs").innerHTML='<div class="ptitle">Customer status &amp; location</div>'+CUST_QS.filter(visible).map(renderQ).join('');
+  $("payQs").innerHTML='<div class="ptitle">Payment &amp; logistics</div>'+PAY_QS.filter(visible).map(renderQ).join('');
+  // center sections
+  let h='';
+  h+='<div class="sec"><h2>Service type '+(S.ans.svc?'<span class="done">✓ '+esc(S.ans.svc)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+["Diagnosis","Install"].map(o=>'<button class="opt'+(S.ans.svc===o?' sel':'')+'" data-q="svc" data-v="'+o+'">'+o+'</button>').join('')+'</div></div></div>';
+  const list=S.ans.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES;
+  h+='<div class="sec"><h2>Appliance '+(S.ans.appliance?'<span class="done">✓ '+esc(S.ans.appliance)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+list.map(a=>'<button class="opt'+(S.ans.appliance===a.name?' sel':'')+'" data-q="appliance" data-v="'+esc(a.name)+'">'+esc(a.name)+'</button>').join('')+'</div></div></div>';
+  const app=currentAppliance();
+  if(app){
+    h+='<div class="sec"><h2>'+esc(S.ans.svc||"")+' — '+esc(app.name)+'</h2><div class="sbody">'+app.qs.filter(visible).map(renderQ).join('')+'</div></div>';
+    if(S.ans.svc==="Diagnosis") h+='<div class="sec"><h2>Details for the tech</h2><div class="sbody">'+SHARED.filter(visible).map(renderQ).join('')+'</div></div>';
+  }
+  $("sections").innerHTML=h;
+  renderFaqs(); updateFee(); updateChecklist(); updateSafety(); save();
+}
+
+function renderFaqs(){
+  $("faqs").innerHTML=FAQS.map((f,i)=>'<div class="faqq" data-f="'+i+'"><div class="fq">'+esc(f[0])+'</div><div class="fa">'+esc(f[1])+'</div></div>').join('');
+}
+
+function feeParts(){
+  const city=S.ans[CU_city.id]; const parts=[]; let total=null;
+  if(city && FEES.cities[city] && FEES.cities[city].fee!=null){ total=FEES.cities[city].fee; parts.push("$"+total+" "+city); }
+  else if(city==="Other"){ parts.push("ZIP lookup needed"); }
+  const brand=S.ans[SH_brand.id];
+  if(brand && FEES.premiumBrands.some(b=>brand.includes(b))){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
+  if(S.ans.appliance==="Refrigerator"){ const style=currentAppliance()&&S.ans[currentAppliance().qs[0].id]; if(style==="Built In"){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); } }
+  return {total,parts};
+}
+function updateFee(){
+  const {total,parts}=feeParts();
+  $("feeAmt").textContent = total!=null ? "$"+total : (parts.length? "ZIP?" : "—");
+  $("feeAmt").title=parts.join(" · ");
+  const cityQ=document.querySelector('#w_'+CU_city.id);
+  if(cityQ){ const city=S.ans[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
+}
+
+function requiredMissing(){
+  const miss=[];
+  if(!S.csr) miss.push("Who's on the call");
+  if(!S.ans.svc) miss.push("Service type");
+  if(!S.ans.appliance) miss.push("Appliance");
+  activeQuestions().forEach(q=>{ if(q.req && !String(S.ans[q.id]||"").trim()) miss.push(q.q.length>42?q.q.slice(0,40)+"…":q.q); });
+  const c=S.cust;
+  if(!((c.first||"")+(c.last||"")).trim()) miss.push("Customer name");
+  if(!(c.phone||"").trim()) miss.push("Phone");
+  if(!(c.street||"").trim()) miss.push("Street address");
+  if(S.ans[PAY_fee.id]==="No") miss.push("Fee must be confirmed (answer: Yes)");
+  return miss;
+}
+function updateChecklist(){
+  const items=[
+    ["CSR picked",!!S.csr],
+    ["Service type + appliance",!!(S.ans.svc&&S.ans.appliance)],
+    ["Main issue + follow-ups",mainDone()],
+    ["Brand / model asked",!!(S.ans.svc==="Install"||S.ans[SH_brand.id])],
+    ["City + fee confirmed",!!(S.ans[CU_city.id]&&S.ans[PAY_fee.id]==="Yes")],
+    ["Who's paying settled",payDone()],
+    ["Customer contact + address",!!(((S.cust.first||"")+(S.cust.last||"")).trim()&&(S.cust.phone||"").trim()&&(S.cust.street||"").trim())]
+  ];
+  $("check").innerHTML=items.map(it=>'<li class="'+(it[1]?'ok':'')+'"><span class="dot"></span>'+esc(it[0])+'</li>').join('');
+  const miss=requiredMissing();
+  $("reviewBtn").disabled=miss.length>0;
+  $("missTxt").textContent=miss.length? (miss.length+" missing: "+miss.slice(0,3).join(", ")+(miss.length>3?"…":"")) : "";
+}
+function mainDone(){
+  const app=currentAppliance(); if(!app) return false;
+  return app.qs.filter(q=>visible(q)&&q.req).every(q=>String(S.ans[q.id]||"").trim());
+}
+function payDone(){
+  return PAY_QS.filter(q=>visible(q)&&q.req).every(q=>String(S.ans[q.id]||"").trim());
+}
+function updateSafety(){
+  const flags=collectFlags().filter(f=>/GAS|SAFETY|DOOR SWITCH|JAMMED/i.test(f));
+  const b=$("safetyBanner");
+  if(flags.length){ b.textContent="SAFETY: "+flags.join("  •  "); b.classList.add("show"); } else b.classList.remove("show");
+}
+function collectFlags(){
+  const flags=[];
+  activeQuestions().forEach(q=>{
+    const v=S.ans[q.id];
+    if(q.flag && String(v||"").trim()) flags.push(q.flag);
+    if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag);
+  });
+  return [...new Set(flags)];
+}
+
+/* ---------- Note builder ---------- */
+function buildNote(incomplete){
+  const L=[]; const c=S.cust; const {total,parts}=feeParts();
+  const app=currentAppliance();
+  L.push((incomplete?"** INCOMPLETE INTAKE — LEAD, DO NOT BOOK AS JOB **\n":"")+(S.ans.svc||"INTAKE").toUpperCase()+" — "+(S.ans.appliance||"?").toUpperCase());
+  const flags=collectFlags();
+  flags.forEach(f=>L.push("⚑ "+f));
+  if(app){
+    app.qs.filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+    if(S.ans.svc==="Diagnosis") SHARED.filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+  }
+  L.push("—");
+  L.push("Customer: "+[(c.first||""),(c.last||"")].join(" ").trim()+(S.ans[CU_ret.id]?" ("+S.ans[CU_ret.id]+")":""));
+  if(c.phone)L.push("Phone: "+c.phone); if(c.email)L.push("Email: "+c.email);
+  L.push("Address: "+[c.street,c.cityTxt,c.zip].filter(Boolean).join(", "));
+  CUST_QS.concat(PAY_QS).filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()&&q!==CU_ret) L.push(shortQ(q.q)+": "+v); });
+  if(total!=null) L.push("Quoted fee: $"+total+(parts.length>1?" ("+parts.join(", ")+")":""));
+  L.push("Taken by: "+(S.csr||"?")+" — "+new Date().toLocaleString());
+  return L.join("\n");
+}
+function shortQ(q){ return q.replace(/\?.*$/,"").replace(/\s*\(.*\)\s*/g," ").trim().slice(0,60); }
+
+/* ---------- Events ---------- */
+document.addEventListener("click",e=>{
+  const o=e.target.closest(".opt");
+  if(o){ const q=o.dataset.q,v=o.dataset.v;
+    if(S.ans[q]===v){ delete S.ans[q]; } else { S.ans[q]=v; }
+    if(q==="svc"||q==="appliance"){ /* keep other answers; tree re-renders */ }
+    render(); return;
+  }
+  const f=e.target.closest(".faqq");
+  if(f){ f.classList.toggle("open"); return; }
+});
+document.addEventListener("input",e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.tq){ S.ans[t.dataset.tq]=t.value; save(); updateChecklist(); }
+  if(t.dataset&&t.dataset.c){ S.cust[t.dataset.c]=t.value; save(); updateChecklist(); }
+});
+$("csr").addEventListener("change",e=>{ S.csr=e.target.value; save(); updateChecklist(); });
+$("newCall").addEventListener("click",()=>{ if(confirm("Clear everything and start a new call?")){ S=blank(); save(); render(); } });
+$("reviewBtn").addEventListener("click",()=>{ $("noteTitle").textContent="Job note — paste into the HCP job"; $("noteText").textContent=buildNote(false); $("copiedMsg").textContent=""; $("noteModal").classList.add("show"); });
+$("partialBtn").addEventListener("click",()=>{ $("noteTitle").textContent="INCOMPLETE — save as a lead, not a job"; $("noteText").textContent=buildNote(true); $("copiedMsg").textContent=""; $("noteModal").classList.add("show"); });
+$("closeModal").addEventListener("click",()=>$("noteModal").classList.remove("show"));
+$("copyBtn").addEventListener("click",async()=>{
+  const txt=$("noteText").textContent;
+  try{ await navigator.clipboard.writeText(txt); $("copiedMsg").textContent="Copied ✓"; }
+  catch(e){ const ta=document.createElement("textarea"); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); $("copiedMsg").textContent="Copied ✓"; }
+});
+
+render();
+</script>
+</body>
+</html>
