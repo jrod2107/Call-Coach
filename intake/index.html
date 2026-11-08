@@ -54,10 +54,14 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 .faqq.open .fa{display:block}
 .actions{position:sticky;bottom:0;background:#fff;border-top:2px solid #e5e7eb;padding:12px 16px;display:flex;gap:10px;align-items:center;border-radius:0 0 10px 10px}
 .btn.go{background:#059669;color:#fff;flex:1;padding:12px;font-size:14px}
-.btn.go:disabled{background:#d1d5db;color:#6b7280;cursor:not-allowed}
+.btn.go:disabled,.btn.go.blocked{background:#d1d5db;color:#6b7280}
 .btn.warn{background:#f59e0b;color:#fff}
 .btn.plain{background:#e5e7eb;color:#374151}
 .missing{font-size:11px;color:#dc2626;font-weight:600}
+.reqtag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+.qerr{color:#b91c1c;font-size:11px;font-weight:700;margin-top:4px}
+.qmiss{outline:3px solid #dc2626;outline-offset:4px;border-radius:6px;background:#fef2f2}
+.fgrp.qmiss input,select.qmiss{border-color:#dc2626}
 #noteModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:20px}
 #noteModal.show{display:flex}
 .modal{background:#fff;border-radius:12px;max-width:640px;width:100%;max-height:85vh;display:flex;flex-direction:column}
@@ -108,7 +112,7 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
     <div id="sections"></div>
     <div class="sec">
       <div class="actions">
-        <button class="btn go" id="reviewBtn" disabled>Review &amp; build job note</button>
+        <button class="btn go" id="reviewBtn">Review &amp; build job note</button>
         <button class="btn warn" id="partialBtn" title="Builds a note from whatever you have — marked INCOMPLETE">Incomplete save</button>
         <span class="missing" id="missTxt"></span>
       </div>
@@ -167,7 +171,7 @@ const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
 
 /* Question factory helpers */
-let _id=0; const Q=(q,opts,extra)=>Object.assign({id:"q"+(++_id),type:opts?"single":"text",q,opts:opts||null},extra||{});
+let _id=0; const ALLQ={}; const Q=(q,opts,extra)=>{ const o=Object.assign({id:"q"+(++_id),type:opts?"single":"text",q,opts:opts||null},extra||{}); ALLQ[o.id]=o; return o; };
 
 /* ---------- DIAGNOSIS trees per appliance ---------- */
 function washer(){
@@ -345,6 +349,33 @@ const INSTALL_APPLIANCES=(()=>{
   ];
 })();
 
+/* ---------- WARRANTY (added 2026-11-08) ---------- */
+const AREA125=["San Marcos","Kyle","Buda","New Braunfels","Lockhart","Kingsbury","Wimberley"];
+const W_MFR=["Speed Queen","Hisense","Frigidaire","Thor","OnPoint"];
+const W_co=Q("Which warranty company?",["Armis (home warranty)"].concat(W_MFR,["Other"]),{req:1,
+  notes:{"Other":{t:"Before booking, ask a supervisor to confirm we do warranty work for this company or brand.",k:"warn"}}});
+const W_sr=Q("Armis work order number (this is the claim number, starts with SR)",null,{req:1,showIf:[W_co.id,["Armis (home warranty)"]],
+  check:v=>/^SR/i.test(v.trim())?"":"Armis work orders start with SR. Double-check the number with the customer."});
+const W_otherName=Q("Warranty company or brand name",null,{req:1,showIf:[W_co.id,["Other"]]});
+const W_sup=Q("Did a supervisor confirm we do warranty work for them?",["Yes","No"],{req:1,showIf:[W_co.id,["Other"]],
+  notes:{"No":{t:"Don't book this as warranty work. Book it as a regular diagnosis, or save it as a lead and have a supervisor call the customer back.",k:"safety",flag:"WARRANTY COMPANY NOT CONFIRMED — do not book as warranty"}}});
+const W_area=Q("Is the customer inside our $125 service area?",["Yes, inside the $125 area","No, outside it"],{req:1,showIf:[W_co.id,W_MFR.concat(["Other"])],
+  note:"$125 area: "+AREA125.join(", ")+". Lockhart, Kingsbury, and Wimberley can run higher further out, so check the address.",
+  notes:{"Yes, inside the $125 area":{t:'Customer pays nothing for this visit. Say: "Good news, you\'re in our service area, so there\'s no charge to you for the visit. The warranty covers it."',k:"script"},
+         "No, outside it":{t:'Customer pays our diagnostic fee for us to come out. The warranty covers the rest. Say: "Since you\'re outside our standard service area, there\'s a diagnostic fee for us to come out to you. The warranty covers the rest of the repair."',k:"script",flag:"WARRANTY OUTSIDE $125 AREA — customer pays diagnostic fee"}}});
+const W_info=Q("__info",null,{info:1,note:'Model and serial are needed for the warranty claim. Ask the customer to text a photo of the model tag. If they can\'t, the tech collects it on site.'});
+const WARRANTY_QS=[W_co,W_sr,W_otherName,W_sup,W_area,W_info];
+function warrantyCo(u){ const c=u.ans[W_co.id]; return c==="Other"?(u.ans[W_otherName.id]||"Other"):c; }
+/* What this unit costs the customer: "full" = our normal fee rules, "covered" = $0 */
+function chargeOf(u){
+  if(u.svc!=="Warranty") return "full";
+  const c=u.ans[W_co.id];
+  if(c==="Armis (home warranty)") return "covered";
+  if(c==="Other" && u.ans[W_sup.id]!=="Yes") return "full";
+  if(visible(W_area,u.ans) && u.ans[W_area.id]==="Yes, inside the $125 area") return "covered";
+  return "full";
+}
+
 /* ---------- Shared follow-ups (diagnosis) ---------- */
 const SH_brand=Q("Brand of appliance",BRANDS,{req:1});
 const SH_brandOther=Q("Brand (other)",null,{showIf:[SH_brand.id,["Other"]]});
@@ -363,7 +394,7 @@ const SH_dur=Q("How long has this been happening?",["Started today","This week",
 const SH_onset=Q("Sudden or gradual?",["Suddenly","Gradually","Not sure"],{});
 const SH_every=Q("Every time, or on and off?",["Every time","Intermittent"],{
   notes:{"Intermittent":{t:"Warn the customer the issue may not act up during the visit. Ask them to note what they were doing when it last happened.",k:"warn"}}});
-const SH_words=Q("Customer's own words — describe the issue",null,{req:1,
+const SH_words=Q("Customer's own words — describe the issue",null,{req:1,min:15,
   note:"The more specific, the better prepared the tech. Include when it happens, where, how long, anything that changed recently (moved, cleaned, overloaded)."});
 const SHARED=[SH_brand,SH_brandOther,SH_tight,SH_model,SH_parts,SH_workedOn,SH_age,SH_err,SH_dur,SH_onset,SH_every,SH_words];
 
@@ -407,19 +438,27 @@ const FAQS=[
 /* ============ STATE & RENDERING ============ */
 const LS="cityapp.intake.v2";
 let S=load();
-function blank(){return {units:[{svc:null,app:null,ans:{}}],g:{},cust:{},csr:""};}
+function blank(){let csr="";try{csr=localStorage.getItem(LS+".csr")||"";}catch(e){} return {units:[{svc:null,app:null,ans:{}}],g:{},cust:{},csr};}
 function load(){try{const s=JSON.parse(localStorage.getItem(LS));return (s&&s.units)?s:blank();}catch(e){return blank();}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
 
 const $=id=>document.getElementById(id);
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
+function textProblem(q,v){
+  v=String(v||"").trim();
+  if(!v) return q.req?"empty":"";
+  if(q.min && v.length<q.min) return "Add a little more detail (at least "+q.min+" characters).";
+  if(q.check) return q.check(v);
+  return "";
+}
 function visible(q,ans){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
 function appOf(u){ const list = u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===u.app)||null; }
 function unitQuestions(u){
   const out=[]; const app=appOf(u);
   if(app) app.qs.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
-  if(u.svc==="Diagnosis" && app) SHARED.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
+  if(u.svc==="Warranty") WARRANTY_QS.forEach(q=>{ if(!q.info && visible(q,u.ans)) out.push(q); });
+  if((u.svc==="Diagnosis"||u.svc==="Warranty") && app) SHARED.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
   return out;
 }
 function globalQuestions(){
@@ -433,11 +472,13 @@ function renderQ(q,scope,ui){
   // scope: "g" or unit index as string; ui: id suffix for wrapper uniqueness
   const ans = scope==="g" ? S.g : S.units[+scope].ans;
   const attr = scope==="g" ? 'data-g="1"' : 'data-u="'+scope+'"';
-  let h='<div class="q" id="w_'+q.id+'_'+ui+'"><div class="qt">'+esc(q.q)+(q.req?' <span class="req">*</span>':'')+'</div>';
+  if(q.info) return '<div class="q"><div class="note">'+esc(q.note)+'</div></div>';
+  let h='<div class="q" id="w_'+q.id+'_'+ui+'"><div class="qt">'+esc(q.q)+(q.req?' <span class="req">*</span>':'')+(q.type==="text"&&q.req?'<span class="reqtag"'+(textProblem(q,ans[q.id])?'':' hidden')+'>Required</span>':'')+'</div>';
   if(q.type==="single"){
     h+='<div class="opts">'+q.opts.map(o=>'<button class="opt'+(ans[q.id]===o?' sel':'')+'" '+attr+' data-q="'+q.id+'" data-v="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div>';
   } else {
     h+='<textarea class="qtext" '+attr+' data-tq="'+q.id+'" placeholder="Type...">'+esc(ans[q.id]||"")+'</textarea>';
+    const pr=textProblem(q,ans[q.id]); h+='<div class="qerr"'+(pr&&pr!=="empty"?'':' hidden')+'>'+esc(pr==="empty"?"":pr)+'</div>';
   }
   if(q.note) h+='<div class="note'+(q.safety||q.safetyNote?' safety':'')+(q.note.startsWith('"')?' script':'')+'">'+esc(q.note)+'</div>';
   const sel=ans[q.id];
@@ -456,13 +497,14 @@ function render(){
     const si=String(i);
     const label='Appliance '+(i+1)+(S.units.length>1?' of '+S.units.length:'');
     const rm=i>0?'<button class="opt" style="margin-left:auto;border-color:#fca5a5;color:#b91c1c" data-rmunit="'+i+'">Remove</button>':'';
-    h+='<div class="sec"><h2>'+label+' — service type '+(u.svc?'<span class="done">✓ '+esc(u.svc)+'</span>':'')+rm+'</h2><div class="sbody"><div class="opts">'+["Diagnosis","Install"].map(o=>'<button class="opt'+(u.svc===o?' sel':'')+'" data-u="'+si+'" data-q="__svc" data-v="'+o+'">'+o+'</button>').join('')+'</div></div></div>';
+    h+='<div class="sec" id="svc_'+si+'"><h2>'+label+' — service type '+(u.svc?'<span class="done">✓ '+esc(u.svc)+'</span>':'')+rm+'</h2><div class="sbody"><div class="opts">'+["Diagnosis","Warranty","Install"].map(o=>'<button class="opt'+(u.svc===o?' sel':'')+'" data-u="'+si+'" data-q="__svc" data-v="'+o+'">'+o+'</button>').join('')+'</div></div></div>';
     const list=u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES;
-    h+='<div class="sec"><h2>'+label+' '+(u.app?'<span class="done">✓ '+esc(u.app)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+list.map(a=>'<button class="opt'+(u.app===a.name?' sel':'')+'" data-u="'+si+'" data-q="__app" data-v="'+esc(a.name)+'">'+esc(a.name)+'</button>').join('')+'</div></div></div>';
+    if(u.svc==="Warranty") h+='<div class="sec"><h2>Warranty details'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+WARRANTY_QS.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+    h+='<div class="sec" id="app_'+si+'"><h2>'+label+' '+(u.app?'<span class="done">✓ '+esc(u.app)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+list.map(a=>'<button class="opt'+(u.app===a.name?' sel':'')+'" data-u="'+si+'" data-q="__app" data-v="'+esc(a.name)+'">'+esc(a.name)+'</button>').join('')+'</div></div></div>';
     const app=appOf(u);
     if(app){
       h+='<div class="sec"><h2>'+esc(u.svc||"")+' — '+esc(app.name)+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+app.qs.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
-      if(u.svc==="Diagnosis") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+SHARED.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+SHARED.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
     }
   });
   h+='<div class="sec"><div class="sbody"><button class="opt" id="addUnit" style="border-style:dashed;font-weight:700">+ Add another appliance</button></div></div>';
@@ -475,14 +517,18 @@ function renderFaqs(){
 }
 
 function feeParts(){
-  const city=S.g[CU_city.id]; const parts=[]; let total=null;
-  if(city && FEES.cities[city] && FEES.cities[city].fee!=null){ total=FEES.cities[city].fee; parts.push("$"+total+" "+city); }
-  else if(city==="Other"){ parts.push("ZIP lookup needed"); }
-  const anyPremium=S.units.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
+  const city=S.g[CU_city.id]; const parts=[];
+  const base = city && FEES.cities[city] ? FEES.cities[city].fee : null;
+  const full=S.units.filter(u=>chargeOf(u)==="full");
+  S.units.forEach(u=>{ if(u.svc==="Warranty"&&chargeOf(u)==="covered") parts.push("$0 "+(warrantyCo(u)||"warranty")+" covered"); });
+  if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?0:null,parts};
+  let total=base;
+  if(base!=null) parts.push("$"+base+" "+city); else if(city==="Other") parts.push("ZIP lookup needed");
+  const anyPremium=full.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
-  const anyBuiltIn=S.units.some(u=>{ if(u.app!=="Refrigerator"||u.svc!=="Diagnosis") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
+  const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
-  if(S.units.length>1){ const extra=(S.units.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(S.units.length>2?"s":"")); }
+  if(full.length>1){ const extra=(full.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
   return {total,parts};
 }
 function updateFee(){
@@ -493,22 +539,37 @@ function updateFee(){
   if(cityQ){ const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
 }
 
-function requiredMissing(){
-  const miss=[];
-  if(!S.csr) miss.push("Who's on the call");
+function missingItems(){
+  const miss=[]; const add=(label,target)=>miss.push({label,target});
+  const short=t=>t.length>42?t.slice(0,40)+"…":t;
+  if(!S.csr) add("Who's on the call","#csr");
   S.units.forEach((u,i)=>{
     const tag=S.units.length>1?" (appliance "+(i+1)+")":"";
-    if(!u.svc) miss.push("Service type"+tag);
-    if(!u.app) miss.push("Appliance"+tag);
-    unitQuestions(u).forEach(q=>{ if(q.req && !String(u.ans[q.id]||"").trim()) miss.push((q.q.length>42?q.q.slice(0,40)+"…":q.q)+tag); });
+    if(!u.svc) add("Service type"+tag,"#svc_"+i);
+    if(!u.app) add("Appliance"+tag,"#app_"+i);
+    unitQuestions(u).forEach(q=>{
+      const v=u.ans[q.id];
+      if(q.type==="text"){ const pr=textProblem(q,v); if(pr) add(short(q.q)+tag+(pr==="empty"?"":" (too short or invalid)"),"#w_"+q.id+"_"+i); }
+      else if(q.req && !String(v||"").trim()) add(short(q.q)+tag,"#w_"+q.id+"_"+i);
+    });
+    if(u.svc==="Warranty" && u.ans[W_co.id]==="Other" && u.ans[W_sup.id]==="No") add("Warranty company not confirmed"+tag,"#w_"+W_sup.id+"_"+i);
+    const city=S.g[CU_city.id];
+    if(u.svc==="Warranty" && u.ans[W_area.id]==="Yes, inside the $125 area" && city && city!=="Other" && !AREA125.includes(city)) add(city+" is outside the $125 area"+tag,"#w_"+W_area.id+"_"+i);
   });
-  globalQuestions().forEach(q=>{ if(q.req && !String(S.g[q.id]||"").trim()) miss.push(q.q.length>42?q.q.slice(0,40)+"…":q.q); });
+  globalQuestions().forEach(q=>{ if(q.req && !String(S.g[q.id]||"").trim()) add(short(q.q),"#w_"+q.id+"_g"); });
   const c=S.cust;
-  if(!((c.first||"")+(c.last||"")).trim()) miss.push("Customer name");
-  if(!(c.phone||"").trim()) miss.push("Phone");
-  if(!(c.street||"").trim()) miss.push("Street address");
-  if(S.g[PAY_fee.id]==="No") miss.push("Fee must be confirmed (answer: Yes)");
+  if(!((c.first||"")+(c.last||"")).trim()) add("Customer name",'[data-c="first"]');
+  if(!(c.phone||"").trim()) add("Phone",'[data-c="phone"]');
+  if(!(c.street||"").trim()) add("Street address",'[data-c="street"]');
+  if(S.g[PAY_fee.id]==="No") add("Fee must be confirmed (answer: Yes)","#w_"+PAY_fee.id+"_g");
   return miss;
+}
+function requiredMissing(){ return missingItems().map(m=>m.label); }
+function showMissing(){
+  document.querySelectorAll(".qmiss").forEach(el=>el.classList.remove("qmiss"));
+  const items=missingItems(); let first=null;
+  items.forEach(m=>{ let el=document.querySelector(m.target); if(!el) return; if(el.matches("[data-c]")) el=el.closest(".fgrp")||el; el.classList.add("qmiss"); if(!first) first=el; });
+  if(first){ first.scrollIntoView({behavior:"smooth",block:"center"}); const f=first.matches("input,select,textarea")?first:first.querySelector("textarea,input"); if(f) setTimeout(()=>f.focus({preventScroll:true}),350); }
 }
 function updateChecklist(){
   const items=[
@@ -516,13 +577,14 @@ function updateChecklist(){
     ["Service type + appliance"+(S.units.length>1?" (all)":""),S.units.every(u=>u.svc&&u.app)],
     ["Main issue + follow-ups"+(S.units.length>1?" (all)":""),S.units.every(mainDone)],
     ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!u.ans[SH_brand.id])],
+    ...(S.units.some(u=>u.svc==="Warranty")?[["Warranty company + details",S.units.filter(u=>u.svc==="Warranty").every(u=>WARRANTY_QS.filter(q=>!q.info&&visible(q,u.ans)).every(q=>q.type==="text"?!textProblem(q,u.ans[q.id]):!!u.ans[q.id]))]]:[]),
     ["City + fee confirmed",!!(S.g[CU_city.id]&&S.g[PAY_fee.id]==="Yes")],
     ["Who's paying settled",payDone()],
     ["Customer contact + address",!!(((S.cust.first||"")+(S.cust.last||"")).trim()&&(S.cust.phone||"").trim()&&(S.cust.street||"").trim())]
   ];
   $("check").innerHTML=items.map(it=>'<li class="'+(it[1]?'ok':'')+'"><span class="dot"></span>'+esc(it[0])+'</li>').join('');
   const miss=requiredMissing();
-  $("reviewBtn").disabled=miss.length>0;
+  $("reviewBtn").classList.toggle("blocked",miss.length>0);
   $("missTxt").textContent=miss.length? (miss.length+" missing: "+miss.slice(0,3).join(", ")+(miss.length>3?"…":"")) : "";
 }
 function mainDone(u){
@@ -559,7 +621,8 @@ function buildNote(incomplete){
     L.push((u.svc||"INTAKE").toUpperCase()+" — "+(u.app||"?").toUpperCase()+(S.units.length>1?"  (appliance "+(i+1)+" of "+S.units.length+")":""));
     if(app){
       app.qs.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
-      if(u.svc==="Diagnosis") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+      if(u.svc==="Warranty"){ L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?"  |  Work order: "+u.ans[W_sr.id].trim().toUpperCase():"")+(visible(W_sup,u.ans)&&u.ans[W_sup.id]?"  |  Supervisor confirmed: "+u.ans[W_sup.id]:"")+(visible(W_area,u.ans)&&u.ans[W_area.id]?"  |  "+u.ans[W_area.id]:"")); if(!String(u.ans[SH_model.id]||"").trim()) L.push("Model/serial: NOT YET. Customer asked to text model tag photo; tech to collect on site if needed."); }
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
     }
     L.push("");
   });
@@ -568,7 +631,7 @@ function buildNote(incomplete){
   if(c.phone)L.push("Phone: "+c.phone); if(c.email)L.push("Email: "+c.email);
   L.push("Address: "+[c.street,c.cityTxt,c.zip].filter(Boolean).join(", "));
   CUST_QS.concat(PAY_QS).filter(q=>visible(q,S.g)).forEach(q=>{ const v=S.g[q.id]; if(String(v||"").trim()&&q!==CU_ret) L.push(shortQ(q.q)+": "+v); });
-  if(total!=null) L.push("Quoted fee: $"+total+(parts.length>1?" ("+parts.join(", ")+")":""));
+  if(total!=null) L.push("Quoted fee: $"+total+(parts.length?" ("+parts.join(", ")+")":""));
   L.push("Taken by: "+(S.csr||"?")+" — "+new Date().toLocaleString());
   return L.join("\n");
 }
@@ -596,13 +659,15 @@ document.addEventListener("input",e=>{
   if(t.dataset&&t.dataset.tq){
     if(t.dataset.u!=null){ const u=S.units[+t.dataset.u]; if(u) u.ans[t.dataset.tq]=t.value; }
     else { S.g[t.dataset.tq]=t.value; }
-    save(); updateChecklist();
+    const qq=ALLQ[t.dataset.tq], w=t.closest(".q");
+    if(qq&&w){ const pr=textProblem(qq,t.value); const tg=w.querySelector(".reqtag"); if(tg) tg.hidden=!pr; const er=w.querySelector(".qerr"); if(er){ er.hidden=!(pr&&pr!=="empty"); er.textContent=pr==="empty"?"":pr; } if(!pr) w.classList.remove("qmiss"); }
+    save(); updateChecklist(); updateFee();
   }
-  if(t.dataset&&t.dataset.c){ S.cust[t.dataset.c]=t.value; save(); updateChecklist(); }
+  if(t.dataset&&t.dataset.c){ S.cust[t.dataset.c]=t.value; if(t.value.trim()){ const g=t.closest(".fgrp"); if(g) g.classList.remove("qmiss"); } save(); updateChecklist(); }
 });
-$("csr").addEventListener("change",e=>{ S.csr=e.target.value; save(); updateChecklist(); });
-$("newCall").addEventListener("click",()=>{ if(confirm("Clear everything and start a new call?")){ S=blank(); save(); render(); } });
-$("reviewBtn").addEventListener("click",()=>{ $("noteTitle").textContent="Job note — paste into the HCP job"; $("noteText").textContent=buildNote(false); $("copiedMsg").textContent=""; $("noteModal").classList.add("show"); });
+$("csr").addEventListener("change",e=>{ S.csr=e.target.value; try{localStorage.setItem(LS+".csr",S.csr);}catch(x){} save(); updateChecklist(); });
+$("newCall").addEventListener("click",()=>{ if(confirm("Clear everything and start a new call?")){ S=blank(); save(); render(); window.scrollTo(0,0); } });
+$("reviewBtn").addEventListener("click",()=>{ if(missingItems().length){ showMissing(); return; } $("noteTitle").textContent="Job note — paste into the HCP job"; $("noteText").textContent=buildNote(false); $("copiedMsg").textContent=""; $("noteModal").classList.add("show"); });
 $("partialBtn").addEventListener("click",()=>{ $("noteTitle").textContent="INCOMPLETE — save as a lead, not a job"; $("noteText").textContent=buildNote(true); $("copiedMsg").textContent=""; $("noteModal").classList.add("show"); });
 $("closeModal").addEventListener("click",()=>$("noteModal").classList.remove("show"));
 $("copyBtn").addEventListener("click",async()=>{
