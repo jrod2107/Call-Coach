@@ -82,6 +82,8 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 #login input{font:inherit;padding:10px;border:2px solid #e5e7eb;border-radius:6px}
 #login button{background:#1e40af;color:#fff;border:0;border-radius:6px;padding:11px;font-weight:700;font-size:14px;cursor:pointer}
 #loginMsg{font-size:12px;color:#b91c1c;min-height:16px}
+#loginMsg.ok{color:#047857}
+#login button[disabled]{opacity:.6;cursor:default}
 #login .alt{font-size:12px;color:#6b7280;text-align:center}
 .whoami{font-size:13px;font-weight:700;display:none}
 body.online .whoami,body.online #signOut{display:inline-block}
@@ -201,10 +203,9 @@ body.online .hchip{display:inline-block}
 
 <div id="login" hidden><form id="loginForm">
   <h2>City Appliance call intake</h2>
-  <div style="font-size:13px;color:#4b5563">Sign in with your Call Desk email and password.</div>
+  <div style="font-size:13px;color:#4b5563">Enter your Call Desk email. We'll send you a link, no password needed.</div>
   <label>Email<input type="email" id="lgEmail" autocomplete="username" required></label>
-  <label>Password<input type="password" id="lgPass" autocomplete="current-password" required></label>
-  <button type="submit">Sign in</button>
+  <button type="submit" id="lgSubmit">Email me a sign-in link</button>
   <div id="loginMsg" role="status"></div>
   <div class="alt"><a href="#" id="offlineLink">Continue without signing in</a> (copy-note only)</div>
 </form></div>
@@ -1065,10 +1066,12 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ c
   renderLookup(); syncButtons();
   if(!SB){ goOffline(); return; }
   $("loginForm").addEventListener("submit",async e=>{
-    e.preventDefault(); const m=$("loginMsg"); m.textContent="Signing in…";
-    const {data,error}=await SB.auth.signInWithPassword({email:$("lgEmail").value.trim(),password:$("lgPass").value});
-    if(error){ m.textContent=error.message==="Invalid login credentials"?"Wrong email or password.":error.message; return; }
-    m.textContent=""; session=data.session; startSignedIn();
+    e.preventDefault(); const m=$("loginMsg"); const btn=$("lgSubmit"); const email=$("lgEmail").value.trim();
+    m.className=""; m.textContent="Sending…"; btn.disabled=true;
+    const {error}=await SB.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:window.location.href}});
+    btn.disabled=false;
+    if(error){ m.className=""; m.textContent=error.message; return; }
+    m.className="ok"; m.textContent="Check your email for a sign-in link. It opens right back up here.";
   });
   $("signOut").addEventListener("click",async()=>{ await SB.auth.signOut(); location.reload(); });
   SB.auth.onAuthStateChange((ev,s)=>{ if(s) session=s; });
