@@ -72,7 +72,7 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 </head>
 <body>
 <div class="header">
-  <div><h1>City Appliance — Call Intake</h1><div class="sub">Any order during the call. Everything checks at the end.</div></div>
+  <div><h1>City Appliance — Call Intake</h1><div class="sub">Any order during the call. Everything checks at the end. Supports multiple appliances.</div></div>
   <div class="hright">
     <div class="feechip"><small>Fee</small><span id="feeAmt">—</span></div>
     <select class="csr" id="csr"><option value="">Who's on the call?</option><option>Marie</option><option>Joe</option><option>Jake</option></select>
@@ -405,37 +405,42 @@ const FAQS=[
 ];
 
 /* ============ STATE & RENDERING ============ */
-const LS="cityapp.intake.v1";
+const LS="cityapp.intake.v2";
 let S=load();
-function blank(){return {ans:{},cust:{},csr:""};}
-function load(){try{return JSON.parse(localStorage.getItem(LS))||blank();}catch(e){return blank();}}
+function blank(){return {units:[{svc:null,app:null,ans:{}}],g:{},cust:{},csr:""};}
+function load(){try{const s=JSON.parse(localStorage.getItem(LS));return (s&&s.units)?s:blank();}catch(e){return blank();}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
 
 const $=id=>document.getElementById(id);
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
-function visible(q){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(S.ans[dep]); }
-function currentAppliance(){ const list = S.ans.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===S.ans.appliance)||null; }
-
-function activeQuestions(){
+function visible(q,ans){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
+function appOf(u){ const list = u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===u.app)||null; }
+function unitQuestions(u){
+  const out=[]; const app=appOf(u);
+  if(app) app.qs.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
+  if(u.svc==="Diagnosis" && app) SHARED.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
+  return out;
+}
+function globalQuestions(){
   const out=[];
-  const app=currentAppliance();
-  if(app) app.qs.forEach(q=>{ if(visible(q)) out.push(q); });
-  if(S.ans.svc==="Diagnosis" && app) SHARED.forEach(q=>{ if(visible(q)) out.push(q); });
-  CUST_QS.forEach(q=>{ if(visible(q)) out.push(q); });
-  PAY_QS.forEach(q=>{ if(visible(q)) out.push(q); });
+  CUST_QS.forEach(q=>{ if(visible(q,S.g)) out.push(q); });
+  PAY_QS.forEach(q=>{ if(visible(q,S.g)) out.push(q); });
   return out;
 }
 
-function renderQ(q){
-  let h='<div class="q" id="w_'+q.id+'"><div class="qt">'+esc(q.q)+(q.req?' <span class="req">*</span>':'')+'</div>';
+function renderQ(q,scope,ui){
+  // scope: "g" or unit index as string; ui: id suffix for wrapper uniqueness
+  const ans = scope==="g" ? S.g : S.units[+scope].ans;
+  const attr = scope==="g" ? 'data-g="1"' : 'data-u="'+scope+'"';
+  let h='<div class="q" id="w_'+q.id+'_'+ui+'"><div class="qt">'+esc(q.q)+(q.req?' <span class="req">*</span>':'')+'</div>';
   if(q.type==="single"){
-    h+='<div class="opts">'+q.opts.map(o=>'<button class="opt'+(S.ans[q.id]===o?' sel':'')+'" data-q="'+q.id+'" data-v="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div>';
+    h+='<div class="opts">'+q.opts.map(o=>'<button class="opt'+(ans[q.id]===o?' sel':'')+'" '+attr+' data-q="'+q.id+'" data-v="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div>';
   } else {
-    h+='<textarea class="qtext" data-tq="'+q.id+'" placeholder="Type...">'+esc(S.ans[q.id]||"")+'</textarea>';
+    h+='<textarea class="qtext" '+attr+' data-tq="'+q.id+'" placeholder="Type...">'+esc(ans[q.id]||"")+'</textarea>';
   }
   if(q.note) h+='<div class="note'+(q.safety||q.safetyNote?' safety':'')+(q.note.startsWith('"')?' script':'')+'">'+esc(q.note)+'</div>';
-  const sel=S.ans[q.id];
+  const sel=ans[q.id];
   if(q.notes && sel && q.notes[sel]) h+='<div class="note '+(q.notes[sel].k==='safety'?'safety':q.notes[sel].k==='script'?'script':'')+'">'+esc(q.notes[sel].t)+'</div>';
   h+='</div>';
   return h;
@@ -443,21 +448,24 @@ function renderQ(q){
 
 function render(){
   $("csr").value=S.csr||"";
-  // left customer inputs
   document.querySelectorAll('[data-c]').forEach(el=>{ el.value=S.cust[el.dataset.c]||""; });
-  // customer & pay questions
-  $("custQs").innerHTML='<div class="ptitle">Customer status &amp; location</div>'+CUST_QS.filter(visible).map(renderQ).join('');
-  $("payQs").innerHTML='<div class="ptitle">Payment &amp; logistics</div>'+PAY_QS.filter(visible).map(renderQ).join('');
-  // center sections
+  $("custQs").innerHTML='<div class="ptitle">Customer status &amp; location</div>'+CUST_QS.filter(q=>visible(q,S.g)).map(q=>renderQ(q,"g","g")).join('');
+  $("payQs").innerHTML='<div class="ptitle">Payment &amp; logistics</div>'+PAY_QS.filter(q=>visible(q,S.g)).map(q=>renderQ(q,"g","g")).join('');
   let h='';
-  h+='<div class="sec"><h2>Service type '+(S.ans.svc?'<span class="done">✓ '+esc(S.ans.svc)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+["Diagnosis","Install"].map(o=>'<button class="opt'+(S.ans.svc===o?' sel':'')+'" data-q="svc" data-v="'+o+'">'+o+'</button>').join('')+'</div></div></div>';
-  const list=S.ans.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES;
-  h+='<div class="sec"><h2>Appliance '+(S.ans.appliance?'<span class="done">✓ '+esc(S.ans.appliance)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+list.map(a=>'<button class="opt'+(S.ans.appliance===a.name?' sel':'')+'" data-q="appliance" data-v="'+esc(a.name)+'">'+esc(a.name)+'</button>').join('')+'</div></div></div>';
-  const app=currentAppliance();
-  if(app){
-    h+='<div class="sec"><h2>'+esc(S.ans.svc||"")+' — '+esc(app.name)+'</h2><div class="sbody">'+app.qs.filter(visible).map(renderQ).join('')+'</div></div>';
-    if(S.ans.svc==="Diagnosis") h+='<div class="sec"><h2>Details for the tech</h2><div class="sbody">'+SHARED.filter(visible).map(renderQ).join('')+'</div></div>';
-  }
+  S.units.forEach((u,i)=>{
+    const si=String(i);
+    const label='Appliance '+(i+1)+(S.units.length>1?' of '+S.units.length:'');
+    const rm=i>0?'<button class="opt" style="margin-left:auto;border-color:#fca5a5;color:#b91c1c" data-rmunit="'+i+'">Remove</button>':'';
+    h+='<div class="sec"><h2>'+label+' — service type '+(u.svc?'<span class="done">✓ '+esc(u.svc)+'</span>':'')+rm+'</h2><div class="sbody"><div class="opts">'+["Diagnosis","Install"].map(o=>'<button class="opt'+(u.svc===o?' sel':'')+'" data-u="'+si+'" data-q="__svc" data-v="'+o+'">'+o+'</button>').join('')+'</div></div></div>';
+    const list=u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES;
+    h+='<div class="sec"><h2>'+label+' '+(u.app?'<span class="done">✓ '+esc(u.app)+'</span>':'')+'</h2><div class="sbody"><div class="opts">'+list.map(a=>'<button class="opt'+(u.app===a.name?' sel':'')+'" data-u="'+si+'" data-q="__app" data-v="'+esc(a.name)+'">'+esc(a.name)+'</button>').join('')+'</div></div></div>';
+    const app=appOf(u);
+    if(app){
+      h+='<div class="sec"><h2>'+esc(u.svc||"")+' — '+esc(app.name)+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+app.qs.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+      if(u.svc==="Diagnosis") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+SHARED.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+    }
+  });
+  h+='<div class="sec"><div class="sbody"><button class="opt" id="addUnit" style="border-style:dashed;font-weight:700">+ Add another appliance</button></div></div>';
   $("sections").innerHTML=h;
   renderFaqs(); updateFee(); updateChecklist(); updateSafety(); save();
 }
@@ -467,42 +475,48 @@ function renderFaqs(){
 }
 
 function feeParts(){
-  const city=S.ans[CU_city.id]; const parts=[]; let total=null;
+  const city=S.g[CU_city.id]; const parts=[]; let total=null;
   if(city && FEES.cities[city] && FEES.cities[city].fee!=null){ total=FEES.cities[city].fee; parts.push("$"+total+" "+city); }
   else if(city==="Other"){ parts.push("ZIP lookup needed"); }
-  const brand=S.ans[SH_brand.id];
-  if(brand && FEES.premiumBrands.some(b=>brand.includes(b))){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
-  if(S.ans.appliance==="Refrigerator"){ const style=currentAppliance()&&S.ans[currentAppliance().qs[0].id]; if(style==="Built In"){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); } }
+  const anyPremium=S.units.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
+  if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
+  const anyBuiltIn=S.units.some(u=>{ if(u.app!=="Refrigerator"||u.svc!=="Diagnosis") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
+  if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
+  if(S.units.length>1) parts.push(S.units.length+" appliances — confirm multi-appliance pricing");
   return {total,parts};
 }
 function updateFee(){
   const {total,parts}=feeParts();
   $("feeAmt").textContent = total!=null ? "$"+total : (parts.length? "ZIP?" : "—");
   $("feeAmt").title=parts.join(" · ");
-  const cityQ=document.querySelector('#w_'+CU_city.id);
-  if(cityQ){ const city=S.ans[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
+  const cityQ=document.querySelector('#w_'+CU_city.id+'_g');
+  if(cityQ){ const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
 }
 
 function requiredMissing(){
   const miss=[];
   if(!S.csr) miss.push("Who's on the call");
-  if(!S.ans.svc) miss.push("Service type");
-  if(!S.ans.appliance) miss.push("Appliance");
-  activeQuestions().forEach(q=>{ if(q.req && !String(S.ans[q.id]||"").trim()) miss.push(q.q.length>42?q.q.slice(0,40)+"…":q.q); });
+  S.units.forEach((u,i)=>{
+    const tag=S.units.length>1?" (appliance "+(i+1)+")":"";
+    if(!u.svc) miss.push("Service type"+tag);
+    if(!u.app) miss.push("Appliance"+tag);
+    unitQuestions(u).forEach(q=>{ if(q.req && !String(u.ans[q.id]||"").trim()) miss.push((q.q.length>42?q.q.slice(0,40)+"…":q.q)+tag); });
+  });
+  globalQuestions().forEach(q=>{ if(q.req && !String(S.g[q.id]||"").trim()) miss.push(q.q.length>42?q.q.slice(0,40)+"…":q.q); });
   const c=S.cust;
   if(!((c.first||"")+(c.last||"")).trim()) miss.push("Customer name");
   if(!(c.phone||"").trim()) miss.push("Phone");
   if(!(c.street||"").trim()) miss.push("Street address");
-  if(S.ans[PAY_fee.id]==="No") miss.push("Fee must be confirmed (answer: Yes)");
+  if(S.g[PAY_fee.id]==="No") miss.push("Fee must be confirmed (answer: Yes)");
   return miss;
 }
 function updateChecklist(){
   const items=[
     ["CSR picked",!!S.csr],
-    ["Service type + appliance",!!(S.ans.svc&&S.ans.appliance)],
-    ["Main issue + follow-ups",mainDone()],
-    ["Brand / model asked",!!(S.ans.svc==="Install"||S.ans[SH_brand.id])],
-    ["City + fee confirmed",!!(S.ans[CU_city.id]&&S.ans[PAY_fee.id]==="Yes")],
+    ["Service type + appliance"+(S.units.length>1?" (all)":""),S.units.every(u=>u.svc&&u.app)],
+    ["Main issue + follow-ups"+(S.units.length>1?" (all)":""),S.units.every(mainDone)],
+    ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!u.ans[SH_brand.id])],
+    ["City + fee confirmed",!!(S.g[CU_city.id]&&S.g[PAY_fee.id]==="Yes")],
     ["Who's paying settled",payDone()],
     ["Customer contact + address",!!(((S.cust.first||"")+(S.cust.last||"")).trim()&&(S.cust.phone||"").trim()&&(S.cust.street||"").trim())]
   ];
@@ -511,12 +525,12 @@ function updateChecklist(){
   $("reviewBtn").disabled=miss.length>0;
   $("missTxt").textContent=miss.length? (miss.length+" missing: "+miss.slice(0,3).join(", ")+(miss.length>3?"…":"")) : "";
 }
-function mainDone(){
-  const app=currentAppliance(); if(!app) return false;
-  return app.qs.filter(q=>visible(q)&&q.req).every(q=>String(S.ans[q.id]||"").trim());
+function mainDone(u){
+  const app=appOf(u); if(!app) return false;
+  return app.qs.filter(q=>visible(q,u.ans)&&q.req).every(q=>String(u.ans[q.id]||"").trim());
 }
 function payDone(){
-  return PAY_QS.filter(q=>visible(q)&&q.req).every(q=>String(S.ans[q.id]||"").trim());
+  return PAY_QS.filter(q=>visible(q,S.g)&&q.req).every(q=>String(S.g[q.id]||"").trim());
 }
 function updateSafety(){
   const flags=collectFlags().filter(f=>/GAS|SAFETY|DOOR SWITCH|JAMMED/i.test(f));
@@ -525,30 +539,35 @@ function updateSafety(){
 }
 function collectFlags(){
   const flags=[];
-  activeQuestions().forEach(q=>{
-    const v=S.ans[q.id];
+  function scan(qs,ans){ qs.forEach(q=>{ const v=ans[q.id];
     if(q.flag && String(v||"").trim()) flags.push(q.flag);
-    if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag);
-  });
+    if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag); }); }
+  S.units.forEach(u=>scan(unitQuestions(u),u.ans));
+  scan(globalQuestions(),S.g);
   return [...new Set(flags)];
 }
 
 /* ---------- Note builder ---------- */
 function buildNote(incomplete){
   const L=[]; const c=S.cust; const {total,parts}=feeParts();
-  const app=currentAppliance();
-  L.push((incomplete?"** INCOMPLETE INTAKE — LEAD, DO NOT BOOK AS JOB **\n":"")+(S.ans.svc||"INTAKE").toUpperCase()+" — "+(S.ans.appliance||"?").toUpperCase());
+  if(incomplete) L.push("** INCOMPLETE INTAKE — LEAD, DO NOT BOOK AS JOB **");
   const flags=collectFlags();
   flags.forEach(f=>L.push("⚑ "+f));
-  if(app){
-    app.qs.filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
-    if(S.ans.svc==="Diagnosis") SHARED.filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
-  }
+  if(flags.length) L.push("");
+  S.units.forEach((u,i)=>{
+    const app=appOf(u);
+    L.push((u.svc||"INTAKE").toUpperCase()+" — "+(u.app||"?").toUpperCase()+(S.units.length>1?"  (appliance "+(i+1)+" of "+S.units.length+")":""));
+    if(app){
+      app.qs.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+      if(u.svc==="Diagnosis") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+    }
+    L.push("");
+  });
   L.push("—");
-  L.push("Customer: "+[(c.first||""),(c.last||"")].join(" ").trim()+(S.ans[CU_ret.id]?" ("+S.ans[CU_ret.id]+")":""));
+  L.push("Customer: "+[(c.first||""),(c.last||"")].join(" ").trim()+(S.g[CU_ret.id]?" ("+S.g[CU_ret.id]+")":""));
   if(c.phone)L.push("Phone: "+c.phone); if(c.email)L.push("Email: "+c.email);
   L.push("Address: "+[c.street,c.cityTxt,c.zip].filter(Boolean).join(", "));
-  CUST_QS.concat(PAY_QS).filter(visible).forEach(q=>{ const v=S.ans[q.id]; if(String(v||"").trim()&&q!==CU_ret) L.push(shortQ(q.q)+": "+v); });
+  CUST_QS.concat(PAY_QS).filter(q=>visible(q,S.g)).forEach(q=>{ const v=S.g[q.id]; if(String(v||"").trim()&&q!==CU_ret) L.push(shortQ(q.q)+": "+v); });
   if(total!=null) L.push("Quoted fee: $"+total+(parts.length>1?" ("+parts.join(", ")+")":""));
   L.push("Taken by: "+(S.csr||"?")+" — "+new Date().toLocaleString());
   return L.join("\n");
@@ -557,10 +576,16 @@ function shortQ(q){ return q.replace(/\?.*$/,"").replace(/\s*\(.*\)\s*/g," ").tr
 
 /* ---------- Events ---------- */
 document.addEventListener("click",e=>{
+  const rm=e.target.closest("[data-rmunit]");
+  if(rm){ const i=+rm.dataset.rmunit; if(confirm("Remove appliance "+(i+1)+"?")){ S.units.splice(i,1); render(); } return; }
+  if(e.target.closest("#addUnit")){ S.units.push({svc:null,app:null,ans:{}}); render(); return; }
   const o=e.target.closest(".opt");
-  if(o){ const q=o.dataset.q,v=o.dataset.v;
-    if(S.ans[q]===v){ delete S.ans[q]; } else { S.ans[q]=v; }
-    if(q==="svc"||q==="appliance"){ /* keep other answers; tree re-renders */ }
+  if(o && o.dataset.q){ const q=o.dataset.q,v=o.dataset.v;
+    if(o.dataset.u!=null){ const u=S.units[+o.dataset.u]; if(!u) return;
+      if(q==="__svc"){ u.svc = u.svc===v?null:v; }
+      else if(q==="__app"){ u.app = u.app===v?null:v; }
+      else { if(u.ans[q]===v) delete u.ans[q]; else u.ans[q]=v; }
+    } else if(o.dataset.g){ if(S.g[q]===v) delete S.g[q]; else S.g[q]=v; }
     render(); return;
   }
   const f=e.target.closest(".faqq");
@@ -568,7 +593,11 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("input",e=>{
   const t=e.target;
-  if(t.dataset&&t.dataset.tq){ S.ans[t.dataset.tq]=t.value; save(); updateChecklist(); }
+  if(t.dataset&&t.dataset.tq){
+    if(t.dataset.u!=null){ const u=S.units[+t.dataset.u]; if(u) u.ans[t.dataset.tq]=t.value; }
+    else { S.g[t.dataset.tq]=t.value; }
+    save(); updateChecklist();
+  }
   if(t.dataset&&t.dataset.c){ S.cust[t.dataset.c]=t.value; save(); updateChecklist(); }
 });
 $("csr").addEventListener("change",e=>{ S.csr=e.target.value; save(); updateChecklist(); });
