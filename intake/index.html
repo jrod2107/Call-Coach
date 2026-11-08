@@ -356,6 +356,16 @@ const W_co=Q("Which warranty company?",["Armis (home warranty)"].concat(W_MFR,["
   notes:{"Other":{t:"Before booking, ask a supervisor to confirm we do warranty work for this company or brand.",k:"warn"}}});
 const W_sr=Q("Armis work order number (this is the claim number, starts with SR)",null,{req:1,showIf:[W_co.id,["Armis (home warranty)"]],
   check:v=>/^SR/i.test(v.trim())?"":"Armis work orders start with SR. Double-check the number with the customer."});
+const ARMIS=["Armis (home warranty)"];
+const W_armisSrc=Q("How did this Armis job come in?",["Armis emailed us the job","Armis called us","Customer called us"],{showIf:[W_co.id,ARMIS],
+  notes:{"Armis emailed us the job":{t:"Pull the claim number, customer details, and issue description from the Armis email, then confirm them with the customer.",k:"script"},
+         "Armis called us":{t:"Get the claim number and customer details from the Armis rep. Then reach the customer to confirm the issue and set the appointment.",k:"script"}}});
+const W_armisFee=Q("Who collects the Armis service fee / deductible on this claim?",["Customer pays Armis directly","We collect it on site","Not sure yet"],{req:1,showIf:[W_co.id,ARMIS],
+  note:"This changes claim to claim. Check the Armis email or ask the Armis rep.",
+  notes:{"We collect it on site":{t:"Enter the amount below. Let the customer know the tech will collect it at the visit.",k:"script"},
+         "Not sure yet":{t:"Find out before the tech goes out. Check the Armis email or call Armis.",k:"warn",flag:"ARMIS FEE — confirm who collects before dispatch"}}});
+const W_armisAmt=Q("Service fee / deductible amount to collect ($)",null,{req:1,showIf:[W_armisFee.id,["We collect it on site"]],
+  check:v=>/^\$?\s*\d+(\.\d{1,2})?$/.test(v.trim())?"":"Enter just the dollar amount, like 100."});
 const W_otherName=Q("Warranty company or brand name",null,{req:1,showIf:[W_co.id,["Other"]]});
 const W_sup=Q("Did a supervisor confirm we do warranty work for them?",["Yes","No"],{req:1,showIf:[W_co.id,["Other"]],
   notes:{"No":{t:"Don't book this as warranty work. Book it as a regular diagnosis, or save it as a lead and have a supervisor call the customer back.",k:"safety",flag:"WARRANTY COMPANY NOT CONFIRMED — do not book as warranty"}}});
@@ -364,7 +374,8 @@ const W_area=Q("Is the customer inside our $125 service area?",["Yes, inside the
   notes:{"Yes, inside the $125 area":{t:'Customer pays nothing for this visit. Say: "Good news, you\'re in our service area, so there\'s no charge to you for the visit. The warranty covers it."',k:"script"},
          "No, outside it":{t:'Customer pays our diagnostic fee for us to come out. The warranty covers the rest. Say: "Since you\'re outside our standard service area, there\'s a diagnostic fee for us to come out to you. The warranty covers the rest of the repair."',k:"script",flag:"WARRANTY OUTSIDE $125 AREA — customer pays diagnostic fee"}}});
 const W_info=Q("__info",null,{info:1,note:'Model and serial are needed for the warranty claim. Ask the customer to text a photo of the model tag. If they can\'t, the tech collects it on site.'});
-const WARRANTY_QS=[W_co,W_sr,W_otherName,W_sup,W_area,W_info];
+const WARRANTY_QS=[W_co,W_sr,W_armisSrc,W_armisFee,W_armisAmt,W_otherName,W_sup,W_area,W_info];
+function armisCollect(u){ if(u.svc!=="Warranty"||u.ans[W_co.id]!=="Armis (home warranty)"||u.ans[W_armisFee.id]!=="We collect it on site") return null; const n=parseFloat(String(u.ans[W_armisAmt.id]||"").replace(/[^0-9.]/g,"")); return isNaN(n)?null:n; }
 function warrantyCo(u){ const c=u.ans[W_co.id]; return c==="Other"?(u.ans[W_otherName.id]||"Other"):c; }
 /* What this unit costs the customer: "full" = our normal fee rules, "covered" = $0 */
 function chargeOf(u){
@@ -521,7 +532,8 @@ function feeParts(){
   const base = city && FEES.cities[city] ? FEES.cities[city].fee : null;
   const full=S.units.filter(u=>chargeOf(u)==="full");
   S.units.forEach(u=>{ if(u.svc==="Warranty"&&chargeOf(u)==="covered") parts.push("$0 "+(warrantyCo(u)||"warranty")+" covered"); });
-  if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?0:null,parts};
+  let armis=0; S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null){ armis+=a; parts.push("+$"+a+" Armis fee collected on site"); } });
+  if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?armis:null,parts};
   let total=base;
   if(base!=null) parts.push("$"+base+" "+city); else if(city==="Other") parts.push("ZIP lookup needed");
   const anyPremium=full.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
@@ -529,6 +541,7 @@ function feeParts(){
   const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
   if(full.length>1){ const extra=(full.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
+  if(armis && total!=null) total+=armis;
   return {total,parts};
 }
 function updateFee(){
@@ -621,7 +634,7 @@ function buildNote(incomplete){
     L.push((u.svc||"INTAKE").toUpperCase()+" — "+(u.app||"?").toUpperCase()+(S.units.length>1?"  (appliance "+(i+1)+" of "+S.units.length+")":""));
     if(app){
       app.qs.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
-      if(u.svc==="Warranty"){ L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?"  |  Work order: "+u.ans[W_sr.id].trim().toUpperCase():"")+(visible(W_sup,u.ans)&&u.ans[W_sup.id]?"  |  Supervisor confirmed: "+u.ans[W_sup.id]:"")+(visible(W_area,u.ans)&&u.ans[W_area.id]?"  |  "+u.ans[W_area.id]:"")); if(!String(u.ans[SH_model.id]||"").trim()) L.push("Model/serial: NOT YET. Customer asked to text model tag photo; tech to collect on site if needed."); }
+      if(u.svc==="Warranty"){ L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?"  |  Work order: "+u.ans[W_sr.id].trim().toUpperCase():"")+(visible(W_armisSrc,u.ans)&&u.ans[W_armisSrc.id]?"  |  "+u.ans[W_armisSrc.id]:"")+(visible(W_armisFee,u.ans)&&u.ans[W_armisFee.id]?"  |  Armis fee: "+u.ans[W_armisFee.id]+(armisCollect(u)!=null?" ($"+armisCollect(u)+")":""):"")+(visible(W_sup,u.ans)&&u.ans[W_sup.id]?"  |  Supervisor confirmed: "+u.ans[W_sup.id]:"")+(visible(W_area,u.ans)&&u.ans[W_area.id]?"  |  "+u.ans[W_area.id]:"")); if(!String(u.ans[SH_model.id]||"").trim()) L.push("Model/serial: NOT YET. Customer asked to text model tag photo; tech to collect on site if needed."); }
       if(u.svc==="Diagnosis"||u.svc==="Warranty") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
     }
     L.push("");
