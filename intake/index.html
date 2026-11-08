@@ -72,6 +72,49 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 .banner{background:#dc2626;color:#fff;padding:10px 16px;border-radius:8px;font-weight:700;font-size:13px;margin-bottom:12px;display:none}
 .banner.show{display:block}
 @media(max-width:1100px){.wrap{grid-template-columns:1fr}.panel.sticky{position:static;max-height:none}}
+
+/* Phase 2 */
+#login{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+#login[hidden]{display:none}
+#login form{background:#fff;border-radius:12px;padding:24px;width:min(380px,100%);display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#login h2{font-size:20px;color:#1e3a8a}
+#login label{font-size:12px;font-weight:700;color:#374151;display:flex;flex-direction:column;gap:4px}
+#login input{font:inherit;padding:10px;border:2px solid #e5e7eb;border-radius:6px}
+#login button{background:#1e40af;color:#fff;border:0;border-radius:6px;padding:11px;font-weight:700;font-size:14px;cursor:pointer}
+#loginMsg{font-size:12px;color:#b91c1c;min-height:16px}
+#login .alt{font-size:12px;color:#6b7280;text-align:center}
+.whoami{font-size:13px;font-weight:700;display:none}
+body.online .whoami,body.online #signOut{display:inline-block}
+body.online select.csr{display:none}
+#signOut{display:none}
+.hchip{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.2);display:none}
+body.online .hchip{display:inline-block}
+.hchip.ok{background:#059669}.hchip.bad{background:#dc2626}
+.hsearch{width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit}
+.hlist{max-height:240px;overflow-y:scroll;border:1px solid #cbd5e1;border-radius:8px;padding:0 8px 8px;margin-top:6px;background:#f8fafc}
+.hlist::-webkit-scrollbar{width:10px}.hlist::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:6px}.hlist::-webkit-scrollbar-track{background:#e2e8f0;border-radius:6px}
+.hhead{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.hlink{background:none;border:none;color:#1e40af;font-weight:700;font-size:12px;cursor:pointer;text-decoration:underline;padding:0}
+.hcard{border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-top:8px}
+.hcard.sel{border-color:#1e40af;background:#eff6ff}
+.hcard .opt{margin-top:6px}
+.hn{font-weight:800;font-size:13px}
+.hm{font-size:11.5px;color:#4b5563;line-height:1.4}
+.hsub{font-size:10px;font-weight:800;text-transform:uppercase;color:#6b7280;margin:10px 0 4px;letter-spacing:.4px}
+.hradio{display:flex;gap:6px;font-size:12px;align-items:flex-start;margin:3px 0;cursor:pointer}
+.hjob{font-size:12px;padding:5px 0;border-top:1px solid #e5e7eb}
+.hdays{font-size:10px;font-weight:800;background:#e5e7eb;border-radius:999px;padding:1px 6px}
+.hdays.warm{background:#fde68a;color:#78350f}
+.hmsg{font-size:12.5px;font-weight:600;padding:0 18px 12px;min-height:4px}
+.hmsg.ok{color:#047857}.hmsg.bad{color:#b91c1c}
+.btn.hcp{background:#1e40af;color:#fff}
+.savedbig{background:#059669;color:#fff;border-radius:10px;padding:16px 18px;margin-bottom:14px;font-size:18px;font-weight:800;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(5,150,105,.35)}
+.savedbig[hidden]{display:none}
+.savedbig a{color:#fff;background:rgba(255,255,255,.2);padding:6px 12px;border-radius:6px;font-size:14px;text-decoration:none}
+.savedbig small{display:block;font-size:12px;font-weight:600;opacity:.9}
+.hmsg.ok{font-size:16px;font-weight:800;background:#ecfdf5;border-top:2px solid #059669;padding:12px 18px}
+.hmsg.bad{background:#fef2f2;border-top:2px solid #dc2626;padding:12px 18px}
+.btn.hcp:disabled{background:#d1d5db;color:#6b7280}
 </style>
 </head>
 <body>
@@ -79,14 +122,18 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
   <div><h1>City Appliance — Call Intake</h1><div class="sub">Any order during the call. Everything checks at the end. Supports multiple appliances.</div></div>
   <div class="hright">
     <div class="feechip"><small>Fee</small><span id="feeAmt">—</span></div>
+    <span class="hchip" id="hcpChip">HCP</span>
+    <span class="whoami" id="whoami"></span>
     <select class="csr" id="csr"><option value="">Who's on the call?</option><option>Marie</option><option>Joe</option><option>Jake</option></select>
     <button class="btn ghost" id="newCall">New call</button>
+    <button class="btn ghost" id="signOut">Sign out</button>
   </div>
 </div>
 
 <div class="wrap">
   <!-- LEFT: customer + payment -->
   <div class="panel sticky" id="leftPanel">
+    <div class="psec" id="hcpBox"></div>
     <div class="psec">
       <div class="ptitle">Customer</div>
       <div class="frow">
@@ -108,6 +155,7 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 
   <!-- CENTER: the guided intake -->
   <div class="center">
+    <div class="savedbig" id="savedBanner" hidden></div>
     <div class="banner" id="safetyBanner"></div>
     <div id="sections"></div>
     <div class="sec">
@@ -142,11 +190,24 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
   <h3 id="noteTitle">Job note</h3>
   <pre id="noteText"></pre>
   <div class="mfoot">
-    <button class="btn go" id="copyBtn">Copy note</button>
+    <button class="btn hcp" id="saveJobBtn" hidden>Create job in HCP</button>
+    <button class="btn hcp" id="saveLeadBtn" hidden>Save as lead in HCP</button>
+    <button class="btn plain" id="copyBtn">Copy note</button>
     <span class="copied" id="copiedMsg"></span>
     <button class="btn plain" id="closeModal" style="margin-left:auto">Close</button>
   </div>
+  <div class="hmsg" id="hcpMsg"></div>
 </div></div>
+
+<div id="login" hidden><form id="loginForm">
+  <h2>City Appliance call intake</h2>
+  <div style="font-size:13px;color:#4b5563">Sign in with your Call Desk email and password.</div>
+  <label>Email<input type="email" id="lgEmail" autocomplete="username" required></label>
+  <label>Password<input type="password" id="lgPass" autocomplete="current-password" required></label>
+  <button type="submit">Sign in</button>
+  <div id="loginMsg" role="status"></div>
+  <div class="alt"><a href="#" id="offlineLink">Continue without signing in</a> (copy-note only)</div>
+</form></div>
 
 <script>
 /* ============ CONFIG — generated from intake-question-tree.md (master, 2026-11-07) ============ */
@@ -449,7 +510,7 @@ const FAQS=[
 /* ============ STATE & RENDERING ============ */
 const LS="cityapp.intake.v2";
 let S=load();
-function blank(){let csr="";try{csr=localStorage.getItem(LS+".csr")||"";}catch(e){} return {units:[{svc:null,app:null,ans:{}}],g:{},cust:{},csr};}
+function blank(){let csr="";try{csr=localStorage.getItem(LS+".csr")||"";}catch(e){} return {units:[{svc:null,app:null,ans:{}}],g:{},cust:{},csr,hcp:{}};}
 function load(){try{const s=JSON.parse(localStorage.getItem(LS));return (s&&s.units)?s:blank();}catch(e){return blank();}}
 function save(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
 
@@ -691,5 +752,332 @@ $("copyBtn").addEventListener("click",async()=>{
 
 render();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* ============ PHASE 2: sign-in, HCP lookup, save to HCP (added 2026-11-08) ============ */
+(function(){
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+let session=null, online=false, hcpOk=false, lastResults=null, searchSeq=0, searchTimer=null;
+const P2={};
+
+function hcpState(){ if(!S.hcp) S.hcp={}; return S.hcp; }
+const digits=s=>String(s||"").replace(/\D/g,"").slice(-10);
+const fmtPhone=s=>{ const d=digits(s); return d.length===10?"("+d.slice(0,3)+") "+d.slice(3,6)+"-"+d.slice(6):(s||""); };
+const money=c=>"$"+(Math.round(c)/100).toFixed(2).replace(/\.00$/,"");
+
+async function call(action,payload){
+  const {data:{session:s}}=await SB.auth.getSession(); if(s) session=s;
+  if(!session) throw new Error("Not signed in.");
+  const r=await fetch(CFG.supabaseUrl+"/functions/v1/hcp",{method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":CFG.supabaseAnonKey},
+    body:JSON.stringify({action,payload:payload||{}})});
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(r.status===401) throw new Error("Your sign-in expired. Reload the page and sign in again.");
+  if(!r.ok){ const d=j&&j.detail; throw new Error((j&&j.error||("Error "+r.status))+(d?": "+JSON.stringify(d).slice(0,300):"")); }
+  return j;
+}
+
+/* ---------- login ---------- */
+function showLogin(show){ $("login").hidden=!show; if(show) setTimeout(()=>$("lgEmail").focus(),50); }
+async function startSignedIn(){
+  showLogin(false); online=true; document.body.classList.add("online");
+  const {data:prof}=await SB.from("profiles").select("display_name,email").eq("id",session.user.id).maybeSingle();
+  const name=(prof&&prof.display_name)||(session.user.email||"").split("@")[0];
+  $("whoami").textContent=name; S.csr=name; save(); $("csr").value=name; updateChecklist();
+  $("hcpChip").textContent="HCP …"; $("hcpChip").className="hchip";
+  try{ const h=await call("health"); hcpOk=!!h.ok; $("hcpChip").textContent=hcpOk?"HCP connected":"HCP not connected"; $("hcpChip").className="hchip "+(hcpOk?"ok":"bad");
+       $("hcpChip").title=hcpOk?(h.company||""):("Key set: "+h.key_set+", HCP status: "+h.hcp_status); }
+  catch(e){ hcpOk=false; $("hcpChip").textContent="HCP not connected"; $("hcpChip").className="hchip bad"; $("hcpChip").title=e.message; }
+  renderLookup(); syncButtons();
+}
+function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); }
+
+/* ---------- lookup panel ---------- */
+function renderLookup(){
+  const box=$("hcpBox"); if(!box) return;
+  if(!online){ box.innerHTML='<div class="ptitle">Housecall Pro</div><div class="note">Not signed in. You can still take the call and copy the note. <a href="#" id="signInLink">Sign in</a> to look up customers and save to HCP.</div>'; return; }
+  const h=hcpState(); let html='<div class="ptitle">Housecall Pro customer</div>';
+  if(h.saved){ html+='<div class="note script"><b>Saved to HCP</b> as '+esc(h.saved.kind)+' #'+esc(h.saved.number||"")+'. Start a new call when you\'re done.</div>'; box.innerHTML=html; return; }
+  if(h.cid && h.cust){
+    const c=h.cust;
+    html+='<div class="hcard sel"><div class="hn">'+esc([c.first_name,c.last_name].filter(Boolean).join(" ")||c.company||"(no name)")+'</div>'+
+      '<div class="hm">'+esc([fmtPhone(c.mobile_number),fmtPhone(c.home_number),c.email].filter(Boolean).join(" · "))+'</div>';
+    const addrs=c.addresses||[];
+    html+='<div class="hsub">Service address</div>'+addrs.map(a=>'<label class="hradio"><input type="radio" name="haddr" value="'+esc(a.id)+'"'+(h.addrId===a.id?' checked':'')+'> '+esc([a.street,a.city,a.zip].filter(Boolean).join(", "))+'</label>').join('')+
+      '<label class="hradio"><input type="radio" name="haddr" value="__new"'+(!h.addrId?' checked':'')+'> New address (the one typed above)</label>';
+    html+='<div class="hsub">Recent jobs</div>';
+    if(h.jobs==null) html+='<div class="hm">Loading…</div>';
+    else if(!h.jobs.length) html+='<div class="hm">No jobs on file.</div>';
+    else html+=h.jobs.map(j=>{ const d=(j.schedule&&(j.schedule.scheduled_start_local||j.schedule.scheduled_start))||j.created_at||""; const days=d?Math.floor((Date.now()-new Date(d))/864e5):null;
+      return '<div class="hjob"><b>#'+esc(j.invoice_number||"")+'</b> '+esc(d?new Date(d).toLocaleDateString():"")+(days!=null&&days<=365?' <span class="hdays'+(days<=90?' warm':'')+'">'+days+' days ago</span>':'')+' · '+esc(j.work_status||"")+(j.total_amount?' · '+money(j.total_amount):'')+
+        (j.description?'<div class="hm">'+esc(j.description).slice(0,160)+'</div>':'')+'</div>'; }).join('');
+    if(h.jobs&&h.jobs.some(j=>{ const d=(j.schedule&&j.schedule.scheduled_start)||j.created_at; return d && (Date.now()-new Date(d))/864e5<=365; }))
+      html+='<div class="note">Recent work on file. Ask if this is the same appliance and issue. Labor warranty is 90 days, parts 1 year.</div>';
+    html+='<button class="opt" id="hClear" style="margin-top:8px">Not this customer</button></div>';
+    box.innerHTML=html; return;
+  }
+  html+='<input class="hsearch" id="hQ" placeholder="Search phone, name, or address" value="'+esc(h.q||"")+'">';
+  if(lastResults==null) html+='<div class="hm" style="margin-top:6px">Matches show up here as you type the phone, name, or street.</div>';
+  else if(!lastResults.length) html+='<div class="hm" style="margin-top:6px">No match in HCP. This will be a new customer.</div>';
+  else if(h.dismissed) html+='<div class="hm" style="margin-top:6px">Matches cleared. This will be saved as a new customer. <button class="hlink" id="hUndo">Show matches again</button></div>';
+  else {
+    html+='<div class="hhead"><div class="hsub">'+lastResults.length+' possible match'+(lastResults.length>1?'es':'')+'. Pick one or clear.</div><button class="hlink" id="hDismiss">Clear matches</button></div>';
+    html+='<div class="hlist">'+lastResults.map((c,i)=>'<div class="hcard"><div class="hn">'+esc([c.first_name,c.last_name].filter(Boolean).join(" ")||c.company||"(no name)")+'</div><div class="hm">'+esc([fmtPhone(c.mobile_number)||fmtPhone(c.home_number),(c.addresses&&c.addresses[0]?[c.addresses[0].street,c.addresses[0].city].filter(Boolean).join(", "):"")].filter(Boolean).join(" · "))+'</div><button class="opt" data-hpick="'+i+'">Use this customer</button></div>').join('')+'</div>';
+    html+='<button class="opt'+(h.isNew?' sel':'')+'" id="hNew" style="margin-top:6px">None of these, it\'s a new customer</button>';
+  }
+  box.innerHTML=html;
+}
+function scheduleSearch(q){
+  clearTimeout(searchTimer); const h=hcpState(); if(!online||h.cid||h.saved||h.dismissed) return;
+  if(String(q||"").trim().length<3) return;
+  searchTimer=setTimeout(()=>runSearch(q),500);
+}
+async function runSearch(q){
+  const seq=++searchSeq; const h=hcpState();
+  try{
+    const r=await call("customer_search",{q});
+    if(seq!==searchSeq) return;
+    lastResults=(r&&r.customers)||[]; h.isNew=false; h.searched=true;
+    if(document.activeElement&&document.activeElement.id==="hQ"){ renderLookup(); const el=$("hQ"); el.focus(); el.setSelectionRange(el.value.length,el.value.length); }
+    else renderLookup();
+    updateChecklist();
+  }catch(e){ if(seq===searchSeq){ $("hcpBox").insertAdjacentHTML("beforeend",'<div class="qerr">Search failed: '+esc(e.message)+'</div>'); } }
+}
+async function pickCustomer(c){
+  const h=hcpState(); h.cid=c.id; h.cust=c; h.isNew=false; h.jobs=null;
+  const a=(c.addresses||[]); h.addrId=a.length===1?a[0].id:null;
+  S.cust.first=c.first_name||S.cust.first||""; S.cust.last=c.last_name||S.cust.last||"";
+  S.cust.phone=fmtPhone(c.mobile_number||c.home_number||S.cust.phone); S.cust.email=c.email||S.cust.email||"";
+  if(a.length===1){ S.cust.street=a[0].street||""; S.cust.cityTxt=a[0].city||""; S.cust.zip=a[0].zip||""; }
+  S.g[CU_ret.id]="Returning";
+  render(); autoCity(); renderLookup();
+  try{ const r=await call("customer_jobs",{customer_id:c.id}); h.jobs=(r&&r.jobs)||[]; }catch(e){ h.jobs=[]; }
+  save(); renderLookup();
+}
+
+/* ---------- city auto-select from address ---------- */
+const CITY_ZIPS={"78666":"San Marcos","78667":"San Marcos","78640":"Kyle","78610":"Buda","78130":"New Braunfels","78131":"New Braunfels","78132":"New Braunfels","78135":"New Braunfels","78644":"Lockhart","78638":"Kingsbury","78676":"Wimberley","78133":"Canyon Lake","78619":"Driftwood","78620":"Dripping Springs"};
+function cityFrom(cityTxt,zip){
+  const t=String(cityTxt||"").trim().toLowerCase(), z=String(zip||"").trim().slice(0,5);
+  const k=Object.keys(FEES.cities).find(c=>c!=="Other"&&c.toLowerCase()===t); if(k) return k;
+  if(CITY_ZIPS[z]) return CITY_ZIPS[z];
+  if(t.length>=3||/^\d{5}$/.test(z)) return "Other";
+  return null;
+}
+function autoCity(){
+  const g=S.g; if(g[CU_city.id] && !g.__cityAuto) return;
+  const c=cityFrom(S.cust.cityTxt,S.cust.zip); if(!c||g[CU_city.id]===c) return;
+  g[CU_city.id]=c; g.__cityAuto=true; render();
+}
+
+/* ---------- customer-safe line items ---------- */
+const INTERNAL_QS=()=>[SH_tight,SH_parts,SH_workedOn,W_sup,W_area,W_armisSrc,W_armisFee,W_armisAmt];
+function cleanVal(v){ return String(v||"").trim().replace(/\s+—\s+/g,", ").replace(/\s+\/\s+/g," / ").replace(/[.\s]+$/,""); }
+function cleanLabel(q){
+  let t=shortQ(q.q).replace(/\s*—\s*/g," ").replace(/\s+/g," ").trim();
+  t=t.replace(/^(What'?s|What is) the main issue$/i,"Issue").replace(/^.*main issue$/i,"Issue")
+     .replace(/^When was the (.+) last (cleaned|changed)$/i,"$1 last $2").replace(/^Is (this|the washer|the appliance) (a |an )?/i,"").replace(/^(Does|Do|Is|Are|Has|Have|Did|Will|Was) (it|the|they|there|you|anyone)\s*/i,"")
+     .replace(/^(What|Which|When|Where|How) /i,m=>m);
+  return t.charAt(0).toUpperCase()+t.slice(1);
+}
+function unitLine(u){
+  const app=appOf(u); const L=[];
+  const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||""):u.ans[SH_brand.id];
+  const model=String(u.ans[SH_model.id]||"").trim();
+  const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
+  L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord+(model?" (model "+model+")":""));
+  if(u.svc==="Warranty") L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?", claim "+u.ans[W_sr.id].trim().toUpperCase():""));
+  if(app){
+    const qs=app.qs.filter(q=>!q.info);
+    const mains=new Set(qs.filter(q=>q.main).map(q=>q.id));
+    const issueIds=new Set(mains); let grew=true;
+    while(grew){ grew=false; qs.forEach(q=>{ if(!issueIds.has(q.id)&&q.showIf&&issueIds.has(q.showIf[0])){ issueIds.add(q.id); grew=true; } }); }
+    const firstMain=qs.findIndex(q=>q.main);
+    const ans=q=>visible(q,u.ans)?cleanVal(u.ans[q.id]):"";
+    const setup=qs.filter((q,i)=>!issueIds.has(q.id)&&(firstMain<0||i<firstMain)).map(q=>{ const v=ans(q); return v?cleanLabel(q)+": "+v:""; }).filter(Boolean);
+    const issue=qs.filter(q=>issueIds.has(q.id)).map(ans).filter(Boolean);
+    const other=qs.filter((q,i)=>!issueIds.has(q.id)&&firstMain>=0&&i>firstMain).map(q=>{ const v=ans(q); return v?cleanLabel(q)+": "+v:""; }).filter(Boolean);
+    if(issue.length) L.push("Issue: "+issue.map((v,i)=>i?v.charAt(0).toLowerCase()+v.slice(1):v).join(", "));
+    setup.concat(other).forEach(x=>L.push(x));
+  }
+  if(u.svc!=="Install"){
+    const err=cleanVal(u.ans[SH_err.id]); if(err) L.push("Error code: "+err);
+    const when=[u.ans[SH_onset.id]&&u.ans[SH_onset.id]!=="Not sure"?"Started "+u.ans[SH_onset.id].toLowerCase():"", u.ans[SH_dur.id]?u.ans[SH_dur.id].toLowerCase():"", u.ans[SH_every.id]?(u.ans[SH_every.id]==="Intermittent"?"comes and goes":"happens every time"):""].filter(Boolean);
+    if(when.length){ const t=when.join(", "); L.push(t.charAt(0).toUpperCase()+t.slice(1)); }
+    const w=String(u.ans[SH_words.id]||"").trim(); if(w) L.push('Customer says: "'+w.replace(/"/g,"'")+'"');
+  }
+  return {name:(u.app||"Appliance")+(model?" - "+model:" -"), description:L.join("\n"), unit_price:0, quantity:1, kind:"labor"};
+}
+function buildLineItems(diagSvc){
+  const {total}=feeParts(); const items=[];
+  const armisCents=S.units.reduce((s,u)=>{ const a=armisCollect(u); return s+(a!=null?Math.round(a*100):0); },0);
+  const diagCents=total!=null?Math.max(0,Math.round(total*100)-armisCents):0;
+  const allInstall=S.units.every(u=>u.svc==="Install");
+  const city=S.g[CU_city.id]||"";
+  S.units.forEach(u=>items.push(unitLine(u)));
+  if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
+    const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",taxable:true,
+      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
+    if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
+    items.push(d);
+  }
+  S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null) items.push({name:"Armis service fee / deductible",unit_price:Math.round(a*100),quantity:1,kind:"labor",description:"Collected on site for Armis claim "+String(u.ans[W_sr.id]||"").trim().toUpperCase()+"."}); });
+  return items;
+}
+async function findDiagService(){
+  if(P2.diag!==undefined) return P2.diag;
+  try{
+    const r=await call("pricebook_search",{q:CFG.diagServiceQuery||"diagnostic"}); const list=(r&&r.data)||[];
+    const want=(CFG.diagServiceName||"").toLowerCase();
+    P2.diag=(want&&list.find(x=>String(x.name).toLowerCase()===want))||list.find(x=>/diagnos|service call/i.test(x.name))||null;
+  }catch(e){ P2.diag=null; P2.diagErr=e.message; }
+  return P2.diag;
+}
+function buildTags(){
+  const t=new Set(["Intake tool"]);
+  S.units.forEach(u=>{ if(u.app) t.add(u.app); if(u.svc) t.add(u.svc); if(u.svc==="Warranty"){ const c=u.ans[W_co.id]; if(c) t.add(c==="Armis (home warranty)"?"Armis":c==="Other"?"Warranty - other":c); } });
+  if(S.units.some(u=>u.ans[SH_workedOn.id]==="Yes — City Appliance")) t.add("Possible callback");
+  return [...t];
+}
+
+/* ---------- save ---------- */
+function hcpMissing(kind){
+  const h=hcpState(); const miss=[];
+  if(!online) miss.push("Sign in first");
+  else if(!hcpOk) miss.push("HCP isn't connected");
+  if(h.saved) miss.push("Already saved as "+h.saved.kind+" #"+h.saved.number);
+  if(online && !h.cid && lastResults && lastResults.length && !h.isNew) miss.push("Pick the matching HCP customer or confirm it's new");
+  if(online && S.g[CU_ret.id]==="Returning" && !h.cid && !h.isNew) miss.push("Find the returning customer in HCP (or confirm new)");
+  if(kind==="job"){ const {total}=feeParts(); if(total==null) miss.push("Fee not set. Look up the ZIP."); }
+  return miss;
+}
+async function ensureCustomer(){
+  const h=hcpState(), c=S.cust;
+  const addr={street:(c.street||"").trim(),city:(c.cityTxt||S.g[CU_city.id]||"").replace(/^Other$/,"").trim(),state:"TX",zip:(c.zip||"").trim(),country:"US"};
+  if(h.cid){
+    if(h.addrId) return {cid:h.cid,aid:h.addrId};
+    const a=await call("address_create",{customer_id:h.cid,address:addr});
+    h.addrId=a.id; return {cid:h.cid,aid:a.id};
+  }
+  const cust={first_name:(c.first||"").trim()||null,last_name:(c.last||"").trim()||null,email:(c.email||"").trim()||null,
+    mobile_number:digits(c.phone)||null,notifications_enabled:S.g[PAY_text.id]!=="No",addresses:[addr]};
+  const r=await call("customer_create",{customer:cust});
+  h.cid=r.id; h.cust=r; h.addrId=(r.addresses&&r.addresses[0]&&r.addresses[0].id)||null;
+  if(!h.addrId){ const a=await call("address_create",{customer_id:r.id,address:addr}); h.addrId=a.id; }
+  return {cid:h.cid,aid:h.addrId};
+}
+async function saveToHcp(kind){
+  const msg=$("hcpMsg"); const h=hcpState();
+  const base=kind==="job"?requiredMissing():leadMissing();
+  const miss=base.concat(hcpMissing(kind));
+  if(miss.length){ msg.className="hmsg bad"; msg.textContent="Can't save yet: "+miss.slice(0,4).join("; ")+(miss.length>4?"…":""); return; }
+  setBusy(true); msg.className="hmsg"; msg.textContent="Saving to HCP…";
+  try{
+    const {cid,aid}=await ensureCustomer();
+    const note=buildNote(kind!=="job");
+    let res, number, id, warn="";
+    if(kind==="job"){
+      const svc=null; // plain line item each time (Jake, 2026-11-08): price book "Diagnostic - $125" can't carry per-call price/description reliably
+      res=await call("job_create",{job:{customer_id:cid,address_id:aid,tags:buildTags(),notes:note}});
+      id=res.id; number=res.invoice_number;
+      h.saved={kind:"job",id,number}; save();
+      try{ await call("line_items_bulk",{job_id:id,line_items:buildLineItems(svc),append:false}); }
+      catch(e1){
+        if(svc){ try{ await call("line_items_bulk",{job_id:id,line_items:buildLineItems(null),append:false}); warn="The diagnostic fee was added as a plain line item, not the price book item ("+e1.message.slice(0,120)+")."; }
+                 catch(e2){ warn="Job created, but the line items didn't save: "+e2.message.slice(0,160)+". Add them in HCP."; } }
+        else warn="Job created, but the line items didn't save: "+e1.message.slice(0,160)+". Add them in HCP.";
+      }
+    } else {
+      const li=buildLineItems(null).map(x=>{ const y=Object.assign({},x,{unit_price:Math.round(x.unit_price)}); delete y.taxable; return y; });
+      res=await call("lead_create",{lead:{customer_id:cid,address_id:aid,line_items:li,tags:buildTags(),note}});
+      id=res.id; number=res.number;
+    }
+    h.saved={kind:kind==="job"?"job":"lead",id,number};
+    save();
+    try{ await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}); }catch(e){}
+    msg.className="hmsg ok";
+    const label=(kind==="job"?"Job":"Lead")+" #"+(number||"");
+    msg.innerHTML='Saved to HCP: '+esc(label)+(kind==="job"?' (needs scheduling)':'')+'. <a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>'+(warn?'<div style="font-size:12px;color:#b45309;margin-top:4px">'+esc(warn)+'</div>':'');
+    showSaved(kind,label,id,warn);
+    renderLookup(); syncButtons();
+  }catch(e){ msg.className="hmsg bad"; msg.textContent="Save failed: "+e.message; }
+  finally{ setBusy(false); }
+}
+function showSaved(kind,label,id,warn){
+  const b=$("savedBanner"); if(!b) return;
+  b.innerHTML='<div>Saved to HCP: '+esc(label)+'<small>'+(kind==="job"?'Schedule it in HCP. ':'')+'This call can\'t be saved again. Hit New call for the next one.'+(warn?' '+esc(warn):'')+'</small></div><a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>';
+  b.hidden=false; window.scrollTo({top:0,behavior:"smooth"});
+}
+function jobUrl(kind,id){ const t=kind==="job"?(CFG.hcpJobUrl||"https://pro.housecallpro.com/app/jobs/{id}"):(CFG.hcpLeadUrl||"https://pro.housecallpro.com/app/leads/{id}"); return t?t.replace("{id}",encodeURIComponent(id)):"https://pro.housecallpro.com/"; }
+function leadMissing(){
+  const m=[]; const c=S.cust;
+  if(!((c.first||"")+(c.last||"")).trim()) m.push("Customer name");
+  if(digits(c.phone).length<10) m.push("Phone");
+  if(!S.units.some(u=>u.app)) m.push("Appliance");
+  if(!S.units.some(u=>String(u.ans[SH_words.id]||"").trim()||Object.keys(u.ans).length)) m.push("Rough issue");
+  return m;
+}
+function setBusy(b){ ["saveJobBtn","saveLeadBtn"].forEach(id=>{ const el=$(id); if(el) el.disabled=b||!!hcpState().saved; }); }
+function syncButtons(){
+  const on=online&&hcpOk; ["saveJobBtn","saveLeadBtn"].forEach(id=>{ const el=$(id); if(el){ el.hidden=!on; el.disabled=!!hcpState().saved; } });
+}
+
+/* ---------- wire up ---------- */
+P2.afterRender=()=>{ renderLookup(); syncButtons(); const h=hcpState(), b=$("savedBanner"); if(b){ if(h.saved) showSavedQuiet(h.saved); else b.hidden=true; } };
+function showSavedQuiet(sv){ const b=$("savedBanner"); const label=(sv.kind==="job"?"Job":"Lead")+" #"+(sv.number||""); b.innerHTML='<div>Saved to HCP: '+esc(label)+'<small>This call can\'t be saved again. Hit New call for the next one.</small></div><a href="'+esc(jobUrl(sv.kind,sv.id))+'" target="_blank" rel="noopener">Open in HCP</a>'; b.hidden=false; }
+const _render=render; window.render=render=function(){ _render(); P2.afterRender(); };
+const _missing=missingItems; window.missingItems=missingItems=function(){
+  const m=_missing(); if(online){ hcpMissing("job").filter(x=>!/Already saved|Fee not set|Sign in|HCP isn't/.test(x)).forEach(x=>m.push({label:x,target:"#hcpBox"})); } return m; };
+const _blank=blank; window.blank=blank=function(){ const b=_blank(); b.hcp={}; if(online){ b.csr=$("whoami").textContent||b.csr; } return b; };
+
+document.addEventListener("click",e=>{
+  const co=e.target.closest(".opt"); if(co&&co.dataset.g&&co.dataset.q===CU_city.id){ S.g.__cityAuto=false; save(); }
+  if(e.target.id==="signInLink"){ e.preventDefault(); showLogin(true); return; }
+  if(e.target.id==="offlineLink"){ e.preventDefault(); goOffline(); return; }
+  const p=e.target.closest("[data-hpick]"); if(p){ pickCustomer(lastResults[+p.dataset.hpick]); return; }
+  if(e.target.id==="hDismiss"){ const h=hcpState(); h.dismissed=true; h.isNew=true; save(); renderLookup(); updateChecklist(); return; }
+  if(e.target.id==="hUndo"){ const h=hcpState(); h.dismissed=false; h.isNew=false; save(); renderLookup(); updateChecklist(); return; }
+  if(e.target.id==="hNew"){ const h=hcpState(); h.isNew=!h.isNew; save(); renderLookup(); updateChecklist(); return; }
+  if(e.target.id==="hClear"){ const h=hcpState(); delete h.cid; delete h.cust; delete h.addrId; delete h.jobs; lastResults=null; save(); renderLookup(); updateChecklist(); scheduleSearch(digits(S.cust.phone).length>=7?digits(S.cust.phone):S.cust.last); return; }
+  if(e.target.id==="saveJobBtn"){ saveToHcp("job"); return; }
+  if(e.target.id==="saveLeadBtn"){ saveToHcp($("noteTitle").textContent.startsWith("INCOMPLETE")?"lead_incomplete":"lead"); return; }
+});
+document.addEventListener("change",e=>{ if(e.target.name==="haddr"){ const h=hcpState(); h.addrId=e.target.value==="__new"?null:e.target.value;
+  const a=(h.cust&&h.cust.addresses||[]).find(x=>x.id===h.addrId); if(a){ S.cust.street=a.street||""; S.cust.cityTxt=a.city||""; S.cust.zip=a.zip||""; document.querySelectorAll('[data-c]').forEach(el=>{ el.value=S.cust[el.dataset.c]||""; }); autoCity(); }
+  save(); }
+  if(e.target.dataset&&e.target.dataset.c==="cityTxt") autoCity(); });
+document.addEventListener("input",e=>{
+  const t=e.target;
+  if(t.id==="hQ"){ const h=hcpState(); h.q=t.value; h.dismissed=false; h.isNew=false; scheduleSearch(t.value); return; }
+  if(t.dataset&&t.dataset.c==="zip"&&/^\d{5}$/.test(t.value.trim())) autoCity();
+  if(t.dataset&&t.dataset.c){ const c=t.dataset.c; const v=t.value;
+    if(c==="phone"&&digits(v).length>=7) scheduleSearch(digits(v));
+    else if(c==="last"&&v.trim().length>=3&&digits(S.cust.phone).length<7) scheduleSearch(v.trim());
+    else if(c==="street"&&v.trim().length>=6&&digits(S.cust.phone).length<7) scheduleSearch(v.trim()); }
+});
+$("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ const m=$("hcpMsg"); if(m){ m.textContent=""; m.className="hmsg"; } renderLookup(); syncButtons(); },0); });
+["reviewBtn","partialBtn"].forEach(id=>$(id).addEventListener("click",()=>{ if(online&&id==="reviewBtn"&&$("noteModal").classList.contains("show")) $("noteTitle").textContent="Review the note, then create the job in HCP"; const m=$("hcpMsg"); const h=hcpState(); if(m&&!h.saved){ m.textContent=""; m.className="hmsg"; } syncButtons();
+  const isPartial=id==="partialBtn"; const j=$("saveJobBtn"); if(j) j.style.display=isPartial?"none":""; }));
+
+(async()=>{
+  renderLookup(); syncButtons();
+  if(!SB){ goOffline(); return; }
+  $("loginForm").addEventListener("submit",async e=>{
+    e.preventDefault(); const m=$("loginMsg"); m.textContent="Signing in…";
+    const {data,error}=await SB.auth.signInWithPassword({email:$("lgEmail").value.trim(),password:$("lgPass").value});
+    if(error){ m.textContent=error.message==="Invalid login credentials"?"Wrong email or password.":error.message; return; }
+    m.textContent=""; session=data.session; startSignedIn();
+  });
+  $("signOut").addEventListener("click",async()=>{ await SB.auth.signOut(); location.reload(); });
+  SB.auth.onAuthStateChange((ev,s)=>{ if(s) session=s; });
+  const {data:{session:s}}=await SB.auth.getSession();
+  if(s){ session=s; startSignedIn(); } else showLogin(true);
+})();
+window.__P2={call,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
+})();
+</script>
+
 </body>
 </html>
