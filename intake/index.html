@@ -395,7 +395,7 @@ const SH_tight=Q("Is the appliance in a tight space or hard-to-access area?",["Y
   notes:{"Yes":{t:"Ask for a photo of the space by text so we can prepare.",k:"script",flag:"TIGHT ACCESS — photo requested"}}});
 const SH_model=Q("Model & serial number",null,{
   note:'Expert prep — for appointments 24+ hrs out, always try: "To give you the best chance of a one-visit repair, can I get the model and serial number? It lets our tech check parts before he heads your way."'});
-const SH_parts=Q("Did the customer describe any broken parts?",["Yes","No"],{req:1,notes:{"Yes":{t:"Note it on the job; we may need to order the part.",k:"warn",flag:"BROKEN PART DESCRIBED — may need to order"}}});
+const SH_parts=Q("Did the customer describe any broken parts?",["Yes","No"],{req:1,notes:{"Yes":{t:'Ask for a photo of the broken piece. Say: "Could you text us a picture of the broken part? It helps our tech make sure he has the right one." Note it on the job; we may need to order the part.',k:"script",flag:"BROKEN PART DESCRIBED — photo requested, may need to order"}}});
 const SH_workedOn=Q("Has anyone worked on this appliance recently?",["Yes — City Appliance","Yes — someone else","No"],{req:1,
   notes:{"Yes — City Appliance":{t:"Possible warranty return: 1 yr parts, 90 days labor. Look up the original job and check the dates before quoting a fee.",k:"warn",flag:"POSSIBLE WARRANTY RETURN — check original job dates"}}});
 const SH_age=Q("Roughly how old is the appliance?",["Under 5 years","5-10 years","Over 10 years","Not sure"],{
@@ -549,7 +549,7 @@ function updateFee(){
   $("feeAmt").textContent = total!=null ? "$"+total : (parts.length? "ZIP?" : "—");
   $("feeAmt").title=parts.join(" · ");
   const cityQ=document.querySelector('#w_'+CU_city.id+'_g');
-  if(cityQ){ const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
+  if(cityQ){ cityQ.querySelectorAll('.citynote').forEach(n=>n.remove()); const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note citynote'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
 }
 
 function missingItems(){

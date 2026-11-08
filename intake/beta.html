@@ -104,6 +104,12 @@ body.online .hchip{display:inline-block}
 .hmsg{font-size:12.5px;font-weight:600;padding:0 18px 12px;min-height:4px}
 .hmsg.ok{color:#047857}.hmsg.bad{color:#b91c1c}
 .btn.hcp{background:#1e40af;color:#fff}
+.savedbig{background:#059669;color:#fff;border-radius:10px;padding:16px 18px;margin-bottom:14px;font-size:18px;font-weight:800;display:flex;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(5,150,105,.35)}
+.savedbig[hidden]{display:none}
+.savedbig a{color:#fff;background:rgba(255,255,255,.2);padding:6px 12px;border-radius:6px;font-size:14px;text-decoration:none}
+.savedbig small{display:block;font-size:12px;font-weight:600;opacity:.9}
+.hmsg.ok{font-size:16px;font-weight:800;background:#ecfdf5;border-top:2px solid #059669;padding:12px 18px}
+.hmsg.bad{background:#fef2f2;border-top:2px solid #dc2626;padding:12px 18px}
 .btn.hcp:disabled{background:#d1d5db;color:#6b7280}
 </style>
 </head>
@@ -145,6 +151,7 @@ body.online .hchip{display:inline-block}
 
   <!-- CENTER: the guided intake -->
   <div class="center">
+    <div class="savedbig" id="savedBanner" hidden></div>
     <div class="banner" id="safetyBanner"></div>
     <div id="sections"></div>
     <div class="sec">
@@ -445,7 +452,7 @@ const SH_tight=Q("Is the appliance in a tight space or hard-to-access area?",["Y
   notes:{"Yes":{t:"Ask for a photo of the space by text so we can prepare.",k:"script",flag:"TIGHT ACCESS — photo requested"}}});
 const SH_model=Q("Model & serial number",null,{
   note:'Expert prep — for appointments 24+ hrs out, always try: "To give you the best chance of a one-visit repair, can I get the model and serial number? It lets our tech check parts before he heads your way."'});
-const SH_parts=Q("Did the customer describe any broken parts?",["Yes","No"],{req:1,notes:{"Yes":{t:"Note it on the job; we may need to order the part.",k:"warn",flag:"BROKEN PART DESCRIBED — may need to order"}}});
+const SH_parts=Q("Did the customer describe any broken parts?",["Yes","No"],{req:1,notes:{"Yes":{t:'Ask for a photo of the broken piece. Say: "Could you text us a picture of the broken part? It helps our tech make sure he has the right one." Note it on the job; we may need to order the part.',k:"script",flag:"BROKEN PART DESCRIBED — photo requested, may need to order"}}});
 const SH_workedOn=Q("Has anyone worked on this appliance recently?",["Yes — City Appliance","Yes — someone else","No"],{req:1,
   notes:{"Yes — City Appliance":{t:"Possible warranty return: 1 yr parts, 90 days labor. Look up the original job and check the dates before quoting a fee.",k:"warn",flag:"POSSIBLE WARRANTY RETURN — check original job dates"}}});
 const SH_age=Q("Roughly how old is the appliance?",["Under 5 years","5-10 years","Over 10 years","Not sure"],{
@@ -599,7 +606,7 @@ function updateFee(){
   $("feeAmt").textContent = total!=null ? "$"+total : (parts.length? "ZIP?" : "—");
   $("feeAmt").title=parts.join(" · ");
   const cityQ=document.querySelector('#w_'+CU_city.id+'_g');
-  if(cityQ){ const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
+  if(cityQ){ cityQ.querySelectorAll('.citynote').forEach(n=>n.remove()); const city=S.g[CU_city.id]; if(city && FEES.cities[city]){ const d=document.createElement('div'); d.className='note citynote'; d.textContent=(FEES.cities[city].fee!=null?("Fee: $"+FEES.cities[city].fee+". "):"")+FEES.cities[city].note+". Before booking, look for a job already booked in the area and try for that day."; cityQ.appendChild(d);} }
 }
 
 function missingItems(){
@@ -839,9 +846,24 @@ async function pickCustomer(c){
   S.cust.phone=fmtPhone(c.mobile_number||c.home_number||S.cust.phone); S.cust.email=c.email||S.cust.email||"";
   if(a.length===1){ S.cust.street=a[0].street||""; S.cust.cityTxt=a[0].city||""; S.cust.zip=a[0].zip||""; }
   S.g[CU_ret.id]="Returning";
-  render(); renderLookup();
+  render(); autoCity(); renderLookup();
   try{ const r=await call("customer_jobs",{customer_id:c.id}); h.jobs=(r&&r.jobs)||[]; }catch(e){ h.jobs=[]; }
   save(); renderLookup();
+}
+
+/* ---------- city auto-select from address ---------- */
+const CITY_ZIPS={"78666":"San Marcos","78667":"San Marcos","78640":"Kyle","78610":"Buda","78130":"New Braunfels","78131":"New Braunfels","78132":"New Braunfels","78135":"New Braunfels","78644":"Lockhart","78638":"Kingsbury","78676":"Wimberley","78133":"Canyon Lake","78619":"Driftwood","78620":"Dripping Springs"};
+function cityFrom(cityTxt,zip){
+  const t=String(cityTxt||"").trim().toLowerCase(), z=String(zip||"").trim().slice(0,5);
+  const k=Object.keys(FEES.cities).find(c=>c!=="Other"&&c.toLowerCase()===t); if(k) return k;
+  if(CITY_ZIPS[z]) return CITY_ZIPS[z];
+  if(t.length>=3||/^\d{5}$/.test(z)) return "Other";
+  return null;
+}
+function autoCity(){
+  const g=S.g; if(g[CU_city.id] && !g.__cityAuto) return;
+  const c=cityFrom(S.cust.cityTxt,S.cust.zip); if(!c||g[CU_city.id]===c) return;
+  g[CU_city.id]=c; g.__cityAuto=true; render();
 }
 
 /* ---------- customer-safe line items ---------- */
@@ -849,30 +871,41 @@ const INTERNAL_QS=()=>[SH_tight,SH_parts,SH_workedOn,W_sup,W_area,W_armisSrc,W_a
 function unitLine(u){
   const app=appOf(u); const bits=[];
   const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||"Other"):u.ans[SH_brand.id];
+  const model=String(u.ans[SH_model.id]||"").trim();
   if(u.svc==="Warranty") bits.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?" (claim "+u.ans[W_sr.id].trim().toUpperCase()+")":""));
+  if(u.svc==="Install") bits.push("Install");
   if(brand) bits.push("Brand: "+brand);
-  if(String(u.ans[SH_model.id]||"").trim()) bits.push("Model/serial: "+u.ans[SH_model.id].trim());
   if(app) app.qs.filter(q=>visible(q,u.ans)&&!q.info).forEach(q=>{ const v=String(u.ans[q.id]||"").trim(); if(v) bits.push(shortQ(q.q)+": "+v); });
   if(u.svc!=="Install"){
-    if(String(u.ans[SH_err.id]||"").trim()) bits.push("Error code: "+u.ans[SH_err.id].trim());
-    if(u.ans[SH_dur.id]) bits.push("Going on: "+u.ans[SH_dur.id]);
-    if(String(u.ans[SH_words.id]||"").trim()) bits.push("Customer description: "+u.ans[SH_words.id].trim());
+    [[SH_err,"Error code"],[SH_dur,"How long"],[SH_onset,"Started"],[SH_every,"Happens"]].forEach(([q,l])=>{ const v=String(u.ans[q.id]||"").trim(); if(v) bits.push(l+": "+v); });
+    if(String(u.ans[SH_words.id]||"").trim()) bits.push("Customer says: "+u.ans[SH_words.id].trim());
   }
-  const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
-  return {name:(u.app||"Appliance")+" "+svcWord, description:bits.join(". ").replace(/\.\./g,"."), unit_price:0, quantity:1};
+  return {name:(u.app||"Appliance")+(model?" - "+model:" -"), description:bits.map(b=>b.replace(/[.\s]+$/,"")).join(". ")+".", unit_price:0, quantity:1, kind:"labor"};
 }
-function buildLineItems(){
+function buildLineItems(diagSvc){
   const {total}=feeParts(); const items=[];
   const armisCents=S.units.reduce((s,u)=>{ const a=armisCollect(u); return s+(a!=null?Math.round(a*100):0); },0);
   const diagCents=total!=null?Math.max(0,Math.round(total*100)-armisCents):0;
   const allInstall=S.units.every(u=>u.svc==="Install");
   const city=S.g[CU_city.id]||"";
-  if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0)
-    items.push({name:allInstall?"Service call":"Diagnostic / service call",unit_price:diagCents,quantity:1,
-      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."});
   S.units.forEach(u=>items.push(unitLine(u)));
-  S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null) items.push({name:"Armis service fee / deductible",unit_price:Math.round(a*100),quantity:1,description:"Collected on site for Armis claim "+String(u.ans[W_sr.id]||"").trim().toUpperCase()+"."}); });
+  if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
+    const d={name:allInstall?"Service call":"Diagnostic / service call",unit_price:diagCents,quantity:1,kind:"labor",
+      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
+    if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
+    items.push(d);
+  }
+  S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null) items.push({name:"Armis service fee / deductible",unit_price:Math.round(a*100),quantity:1,kind:"labor",description:"Collected on site for Armis claim "+String(u.ans[W_sr.id]||"").trim().toUpperCase()+"."}); });
   return items;
+}
+async function findDiagService(){
+  if(P2.diag!==undefined) return P2.diag;
+  try{
+    const r=await call("pricebook_search",{q:CFG.diagServiceQuery||"diagnostic"}); const list=(r&&r.data)||[];
+    const want=(CFG.diagServiceName||"").toLowerCase();
+    P2.diag=(want&&list.find(x=>String(x.name).toLowerCase()===want))||list.find(x=>/diagnos|service call/i.test(x.name))||null;
+  }catch(e){ P2.diag=null; P2.diagErr=e.message; }
+  return P2.diag;
 }
 function buildTags(){
   const t=new Set(["Intake tool"]);
@@ -916,12 +949,21 @@ async function saveToHcp(kind){
   try{
     const {cid,aid}=await ensureCustomer();
     const note=buildNote(kind!=="job");
-    let res, number, id;
+    let res, number, id, warn="";
     if(kind==="job"){
-      res=await call("job_create",{job:{customer_id:cid,address_id:aid,line_items:buildLineItems(),tags:buildTags(),notes:note}});
+      const svc=await findDiagService();
+      res=await call("job_create",{job:{customer_id:cid,address_id:aid,tags:buildTags(),notes:note}});
       id=res.id; number=res.invoice_number;
+      h.saved={kind:"job",id,number}; save();
+      try{ await call("line_items_bulk",{job_id:id,line_items:buildLineItems(svc),append:false}); }
+      catch(e1){
+        if(svc){ try{ await call("line_items_bulk",{job_id:id,line_items:buildLineItems(null),append:false}); warn="The diagnostic fee was added as a plain line item, not the price book item ("+e1.message.slice(0,120)+")."; }
+                 catch(e2){ warn="Job created, but the line items didn't save: "+e2.message.slice(0,160)+". Add them in HCP."; } }
+        else warn="Job created, but the line items didn't save: "+e1.message.slice(0,160)+". Add them in HCP.";
+      }
+      if(!svc&&!warn) warn="Couldn't find the diagnostic fee in the price book, so it was added as a plain line item.";
     } else {
-      const li=buildLineItems().map(x=>Object.assign({kind:"labor"},x,{unit_price:Math.round(x.unit_price)}));
+      const li=buildLineItems(null).map(x=>Object.assign({},x,{unit_price:Math.round(x.unit_price)}));
       res=await call("lead_create",{lead:{customer_id:cid,address_id:aid,line_items:li,tags:buildTags(),note}});
       id=res.id; number=res.number;
     }
@@ -929,13 +971,19 @@ async function saveToHcp(kind){
     save();
     try{ await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}); }catch(e){}
     msg.className="hmsg ok";
-    msg.innerHTML='Saved. HCP '+(kind==="job"?'job':'lead')+' <b>#'+esc(number||"")+'</b> created'+(kind==="job"?' (needs scheduling)':'')+'. '+
-      '<a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open HCP</a>';
+    const label=(kind==="job"?"Job":"Lead")+" #"+(number||"");
+    msg.innerHTML='Saved to HCP: '+esc(label)+(kind==="job"?' (needs scheduling)':'')+'. <a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>'+(warn?'<div style="font-size:12px;color:#b45309;margin-top:4px">'+esc(warn)+'</div>':'');
+    showSaved(kind,label,id,warn);
     renderLookup(); syncButtons();
   }catch(e){ msg.className="hmsg bad"; msg.textContent="Save failed: "+e.message; }
   finally{ setBusy(false); }
 }
-function jobUrl(kind,id){ const t=kind==="job"?CFG.hcpJobUrl:CFG.hcpLeadUrl; return t?t.replace("{id}",encodeURIComponent(id)):"https://pro.housecallpro.com/"; }
+function showSaved(kind,label,id,warn){
+  const b=$("savedBanner"); if(!b) return;
+  b.innerHTML='<div>Saved to HCP: '+esc(label)+'<small>'+(kind==="job"?'Schedule it in HCP. ':'')+'This call can\'t be saved again. Hit New call for the next one.'+(warn?' '+esc(warn):'')+'</small></div><a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>';
+  b.hidden=false; window.scrollTo({top:0,behavior:"smooth"});
+}
+function jobUrl(kind,id){ const t=kind==="job"?(CFG.hcpJobUrl||"https://pro.housecallpro.com/app/jobs/{id}"):CFG.hcpLeadUrl; return t?t.replace("{id}",encodeURIComponent(id)):"https://pro.housecallpro.com/"; }
 function leadMissing(){
   const m=[]; const c=S.cust;
   if(!((c.first||"")+(c.last||"")).trim()) m.push("Customer name");
@@ -950,13 +998,15 @@ function syncButtons(){
 }
 
 /* ---------- wire up ---------- */
-P2.afterRender=()=>{ renderLookup(); syncButtons(); };
+P2.afterRender=()=>{ renderLookup(); syncButtons(); const h=hcpState(), b=$("savedBanner"); if(b){ if(h.saved) showSavedQuiet(h.saved); else b.hidden=true; } };
+function showSavedQuiet(sv){ const b=$("savedBanner"); const label=(sv.kind==="job"?"Job":"Lead")+" #"+(sv.number||""); b.innerHTML='<div>Saved to HCP: '+esc(label)+'<small>This call can\'t be saved again. Hit New call for the next one.</small></div><a href="'+esc(jobUrl(sv.kind,sv.id))+'" target="_blank" rel="noopener">Open in HCP</a>'; b.hidden=false; }
 const _render=render; window.render=render=function(){ _render(); P2.afterRender(); };
 const _missing=missingItems; window.missingItems=missingItems=function(){
   const m=_missing(); if(online){ hcpMissing("job").filter(x=>!/Already saved|Fee not set|Sign in|HCP isn't/.test(x)).forEach(x=>m.push({label:x,target:"#hcpBox"})); } return m; };
 const _blank=blank; window.blank=blank=function(){ const b=_blank(); b.hcp={}; if(online){ b.csr=$("whoami").textContent||b.csr; } return b; };
 
 document.addEventListener("click",e=>{
+  const co=e.target.closest(".opt"); if(co&&co.dataset.g&&co.dataset.q===CU_city.id){ S.g.__cityAuto=false; save(); }
   if(e.target.id==="signInLink"){ e.preventDefault(); showLogin(true); return; }
   if(e.target.id==="offlineLink"){ e.preventDefault(); goOffline(); return; }
   const p=e.target.closest("[data-hpick]"); if(p){ pickCustomer(lastResults[+p.dataset.hpick]); return; }
@@ -966,11 +1016,13 @@ document.addEventListener("click",e=>{
   if(e.target.id==="saveLeadBtn"){ saveToHcp($("noteTitle").textContent.startsWith("INCOMPLETE")?"lead_incomplete":"lead"); return; }
 });
 document.addEventListener("change",e=>{ if(e.target.name==="haddr"){ const h=hcpState(); h.addrId=e.target.value==="__new"?null:e.target.value;
-  const a=(h.cust&&h.cust.addresses||[]).find(x=>x.id===h.addrId); if(a){ S.cust.street=a.street||""; S.cust.cityTxt=a.city||""; S.cust.zip=a.zip||""; document.querySelectorAll('[data-c]').forEach(el=>{ el.value=S.cust[el.dataset.c]||""; }); }
-  save(); } });
+  const a=(h.cust&&h.cust.addresses||[]).find(x=>x.id===h.addrId); if(a){ S.cust.street=a.street||""; S.cust.cityTxt=a.city||""; S.cust.zip=a.zip||""; document.querySelectorAll('[data-c]').forEach(el=>{ el.value=S.cust[el.dataset.c]||""; }); autoCity(); }
+  save(); }
+  if(e.target.dataset&&e.target.dataset.c==="cityTxt") autoCity(); });
 document.addEventListener("input",e=>{
   const t=e.target;
   if(t.id==="hQ"){ hcpState().q=t.value; scheduleSearch(t.value); return; }
+  if(t.dataset&&t.dataset.c==="zip"&&/^\d{5}$/.test(t.value.trim())) autoCity();
   if(t.dataset&&t.dataset.c){ const c=t.dataset.c; const v=t.value;
     if(c==="phone"&&digits(v).length>=7) scheduleSearch(digits(v));
     else if(c==="last"&&v.trim().length>=3&&digits(S.cust.phone).length<7) scheduleSearch(v.trim());

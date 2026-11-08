@@ -104,6 +104,15 @@ Deno.serve(async (req: Request) => {
     case "job_get":
       out = await hcp(`/jobs/${id(payload.job_id)}`);
       break;
+    case "job_line_items":
+      out = await hcp(`/jobs/${id(payload.job_id)}/line_items`);
+      break;
+    case "line_items_bulk":
+      out = await hcp(`/jobs/${id(payload.job_id)}/line_items/bulk_update`, { method: "PUT", body: JSON.stringify({ line_items: payload.line_items || [], append_line_items: !!payload.append }) });
+      break;
+    case "pricebook_search":
+      out = await hcp(`/api/price_book/services?q=${encodeURIComponent(String(payload.q || ""))}&page_size=25`);
+      break;
     case "lead_create":
       out = await hcp("/leads", { method: "POST", body: JSON.stringify(payload.lead || {}) });
       break;
