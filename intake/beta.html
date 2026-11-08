@@ -951,7 +951,7 @@ async function saveToHcp(kind){
     const note=buildNote(kind!=="job");
     let res, number, id, warn="";
     if(kind==="job"){
-      const svc=await findDiagService();
+      const svc=null; // plain line item each time (Jake, 2026-11-08): price book "Diagnostic - $125" can't carry per-call price/description reliably
       res=await call("job_create",{job:{customer_id:cid,address_id:aid,tags:buildTags(),notes:note}});
       id=res.id; number=res.invoice_number;
       h.saved={kind:"job",id,number}; save();
@@ -961,7 +961,6 @@ async function saveToHcp(kind){
                  catch(e2){ warn="Job created, but the line items didn't save: "+e2.message.slice(0,160)+". Add them in HCP."; } }
         else warn="Job created, but the line items didn't save: "+e1.message.slice(0,160)+". Add them in HCP.";
       }
-      if(!svc&&!warn) warn="Couldn't find the diagnostic fee in the price book, so it was added as a plain line item.";
     } else {
       const li=buildLineItems(null).map(x=>Object.assign({},x,{unit_price:Math.round(x.unit_price)}));
       res=await call("lead_create",{lead:{customer_id:cid,address_id:aid,line_items:li,tags:buildTags(),note}});
@@ -983,7 +982,7 @@ function showSaved(kind,label,id,warn){
   b.innerHTML='<div>Saved to HCP: '+esc(label)+'<small>'+(kind==="job"?'Schedule it in HCP. ':'')+'This call can\'t be saved again. Hit New call for the next one.'+(warn?' '+esc(warn):'')+'</small></div><a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>';
   b.hidden=false; window.scrollTo({top:0,behavior:"smooth"});
 }
-function jobUrl(kind,id){ const t=kind==="job"?(CFG.hcpJobUrl||"https://pro.housecallpro.com/app/jobs/{id}"):CFG.hcpLeadUrl; return t?t.replace("{id}",encodeURIComponent(id)):"https://pro.housecallpro.com/"; }
+function jobUrl(kind,id){ const t=kind==="job"?(CFG.hcpJobUrl||"https://pro.housecallpro.com/app/jobs/{id}"):(CFG.hcpLeadUrl||"https://pro.housecallpro.com/app/leads/{id}"); return t?t.replace("{id}",encodeURIComponent(id)):"https://pro.housecallpro.com/"; }
 function leadMissing(){
   const m=[]; const c=S.cust;
   if(!((c.first||"")+(c.last||"")).trim()) m.push("Customer name");
