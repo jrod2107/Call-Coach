@@ -890,7 +890,7 @@ function buildLineItems(diagSvc){
   const city=S.g[CU_city.id]||"";
   S.units.forEach(u=>items.push(unitLine(u)));
   if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
-    const d={name:allInstall?"Service call":"Diagnostic / service call",unit_price:diagCents,quantity:1,kind:"labor",
+    const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",
       description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
     if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
     items.push(d);
