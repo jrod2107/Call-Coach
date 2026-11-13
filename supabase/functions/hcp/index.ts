@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // HCP proxy for the City Appliance intake tool.
 // The HCP API key lives ONLY here, as the HCP_API_KEY secret.
-// verify_jwt=true: only signed-in CSRs can call this function.
+// verify_jwt=true plus isStaff(): only signed-in csr/admin profiles can call this function.
 // Request/response shapes verified against docs.housecallpro.com (2026-11-08):
 //   money fields (unit_price, unit_cost) are in CENTS.
 
@@ -46,12 +46,34 @@ async function hcp(path: string, init: RequestInit = {}) {
 
 const id = (v: unknown) => encodeURIComponent(String(v || ""));
 
+/* ---------- staff check ----------
+   verify_jwt alone lets the site's public (publishable) key through, so check
+   here that the caller is a signed-in user whose profile role is csr or admin.
+   Users can read their own profile row (RLS) but cannot change their role. */
+const STAFF_ROLES = ["csr", "admin"];
+async function isStaff(req: Request): Promise<boolean> {
+  const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!jwt.startsWith("eyJ")) return false; // publishable and secret keys are not user sessions
+  const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!url || !anon) return false;
+  const h = { Authorization: `Bearer ${jwt}`, apikey: anon };
+  const u = await fetch(`${url}/auth/v1/user`, { headers: h });
+  if (u.status !== 200) return false;
+  const uid = String(((await u.json()) as Record<string, unknown>)?.id || "");
+  if (!uid) return false;
+  const p = await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(uid)}&select=role`, { headers: h });
+  if (p.status !== 200) return false;
+  const rows = (await p.json()) as Record<string, unknown>[];
+  return Array.isArray(rows) && rows.length === 1 && STAFF_ROLES.includes(String(rows[0].role));
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
   const headers = { ...cors(origin), "Content-Type": "application/json" };
 
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers });
+  if (!(await isStaff(req))) return new Response(JSON.stringify({ error: "Sign in with a City Appliance staff account." }), { status: 401, headers });
 
   let action = "", payload: Record<string, unknown> = {};
   try {
