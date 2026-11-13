@@ -175,6 +175,7 @@ body.online .hchip{display:inline-block}
       <div class="ptitle">Call checklist</div>
       <ul class="checklist" id="check"></ul>
     </div>
+    <div class="psec" id="schedBox"></div>
     <div class="psec">
       <div class="ptitle">Reminders</div>
       <div class="note script" style="margin-bottom:6px"><b>Text OK?</b> Ask if appointment confirmations by text are ok. Mention the confirmation text will ask for a photo of the model number tag.</div>
@@ -780,6 +781,19 @@ async function call(action,payload){
   return j;
 }
 
+// Same as call(), for any other signed-in Edge Function (used by the schedule panel).
+async function callFn(fn,body){
+  const {data:{session:s}}=await SB.auth.getSession(); if(s) session=s;
+  if(!session) throw new Error("Not signed in.");
+  const r=await fetch(CFG.supabaseUrl+"/functions/v1/"+fn,{method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":CFG.supabaseAnonKey},
+    body:JSON.stringify(body||{})});
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(r.status===401) throw new Error("Your sign-in expired. Reload the page and sign in again.");
+  if(!r.ok) throw new Error((j&&j.error)||("Error "+r.status));
+  return j;
+}
+
 /* ---------- login ---------- */
 function showLogin(show){ $("login").hidden=!show; if(show) setTimeout(()=>$("lgEmail").focus(),50); }
 async function startSignedIn(){
@@ -791,9 +805,9 @@ async function startSignedIn(){
   try{ const h=await call("health"); hcpOk=!!h.ok; $("hcpChip").textContent=hcpOk?"HCP connected":"HCP not connected"; $("hcpChip").className="hchip "+(hcpOk?"ok":"bad");
        $("hcpChip").title=hcpOk?(h.company||""):("Key set: "+h.key_set+", HCP status: "+h.hcp_status); }
   catch(e){ hcpOk=false; $("hcpChip").textContent="HCP not connected"; $("hcpChip").className="hchip bad"; $("hcpChip").title=e.message; }
-  renderLookup(); syncButtons();
+  renderLookup(); syncButtons(); if(window.Sched) Sched.sync();
 }
-function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); }
+function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); if(window.Sched) Sched.sync(); }
 
 /* ---------- lookup panel ---------- */
 function renderLookup(){
@@ -1078,9 +1092,10 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ c
   const {data:{session:s}}=await SB.auth.getSession();
   if(s){ session=s; startSignedIn(); } else showLogin(true);
 })();
-window.__P2={call,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
+window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
 })();
 </script>
+<script src="schedule.js?v=20261112"></script>
 
 </body>
 </html>
