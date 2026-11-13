@@ -312,6 +312,11 @@ Deno.serve(async (req: Request) => {
   // Calendar events are optional: the schedule still works if they cannot be read.
   const ev = evRes.status === 200 ? eventsInRange(evRes.items, from, to) : null;
 
+  // How many jobs can be placed on a map without a lookup. Counts only, no customer data.
+  const geo = { jobs: jobs.length, with_latlng: jobs.filter((j) => j.lat != null && j.lng != null).length, with_street: jobs.filter((j) => j.street).length };
+  const addrKeys = Object.keys(obj((live[0] || {}).address)).sort().join(","); // field names only
+  console.log(`geo coverage: ${geo.with_latlng}/${geo.jobs} jobs have HCP coordinates, ${geo.with_street}/${geo.jobs} have a street; address fields: ${addrKeys}`);
+
   return reply(200, {
     from: new Date(from).toISOString(),
     to: new Date(to).toISOString(),
@@ -322,5 +327,6 @@ Deno.serve(async (req: Request) => {
     events_status: evRes.status,
     events_unsupported_rules: ev ? ev.unsupported : 0,
     truncated: jobsRes.truncated || evRes.truncated,
+    geo,
   });
 });
