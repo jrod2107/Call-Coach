@@ -228,7 +228,8 @@ const FEES = {
     "Other":{fee:null,note:"Get the ZIP to look up the fee. If no fee comes up, save their info and tell them the scheduling team will call back to complete the booking."}
   },
   premiumBrands:["Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram"],
-  premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85
+  premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85,
+  commercialFee:200   // diagnostic fee for a business, in place of the city fee
 };
 const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
@@ -493,7 +494,11 @@ const PAY_fee=Q("Did you confirm the diagnostic fee with the customer?",["Yes","
 const PAY_slot=Q("Slot the customer was told",["AM","PM"],{req:1});
 const PAY_text=Q("OK to send appointment confirmations by text?",["Yes","No"],{req:1,
   notes:{"Yes":{t:"Tell them the confirmation text will ask for a photo of the model number tag, sent back by text.",k:"script"}}});
-const CUST_QS=[CU_ret,CU_city];
+// Defined last so earlier question ids (and any call in progress) stay the same.
+const CU_type=Q("Home or business?",["Home","Business"],{req:1,
+  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+". Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
+const isCommercial=()=>S.g[CU_type.id]==="Business";
+const CUST_QS=[CU_ret,CU_type,CU_city];
 const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,PAY_fee,PAY_slot,PAY_text];
 
 const FAQS=[
@@ -592,13 +597,15 @@ function renderFaqs(){
 
 function feeParts(){
   const city=S.g[CU_city.id]; const parts=[];
-  const base = city && FEES.cities[city] ? FEES.cities[city].fee : null;
+  const cityFee = city && FEES.cities[city] ? FEES.cities[city].fee : null;
+  // Business calls use the commercial fee; an "Other" city still needs the ZIP lookup.
+  const base = isCommercial() && cityFee!=null ? FEES.commercialFee : cityFee;
   const full=S.units.filter(u=>chargeOf(u)==="full");
   S.units.forEach(u=>{ if(u.svc==="Warranty"&&chargeOf(u)==="covered") parts.push("$0 "+(warrantyCo(u)||"warranty")+" covered"); });
   let armis=0; S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null){ armis+=a; parts.push("+$"+a+" Armis fee collected on site"); } });
   if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?armis:null,parts};
   let total=base;
-  if(base!=null) parts.push("$"+base+" "+city); else if(city==="Other") parts.push("ZIP lookup needed");
+  if(base!=null) parts.push("$"+base+" "+(isCommercial()?"commercial, ":"")+city); else if(city==="Other") parts.push("ZIP lookup needed");
   const anyPremium=full.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
   const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
@@ -934,7 +941,7 @@ function buildLineItems(diagSvc){
   S.units.forEach(u=>items.push(unitLine(u)));
   if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
     const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",taxable:true,
-      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
+      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":(isCommercial()?"Commercial diagnosis":"Diagnosis")+" and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
     if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
     items.push(d);
   }
@@ -954,6 +961,7 @@ function buildTags(){
   const t=new Set(["Intake tool"]);
   S.units.forEach(u=>{ if(u.app) t.add(u.app); if(u.svc) t.add(u.svc); if(u.svc==="Warranty"){ const c=u.ans[W_co.id]; if(c) t.add(c==="Armis (home warranty)"?"Armis":c==="Other"?"Warranty - other":c); } });
   if(S.units.some(u=>u.ans[SH_workedOn.id]==="Yes — City Appliance")) t.add("Possible callback");
+  if(isCommercial()) t.add("Commercial");   // the schedule panel counts Commercial-tagged jobs as 2 points
   return [...t];
 }
 
