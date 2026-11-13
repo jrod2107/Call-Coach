@@ -229,7 +229,9 @@ const FEES = {
   },
   premiumBrands:["Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram"],
   premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85,
-  commercialFee:200   // diagnostic fee for a business, in place of the city fee
+  // Business calls: $200 in the standard $125 area. Farther cities add the same
+  // amount they add for a home (Driftwood +$20, Canyon Lake +$40).
+  standardFee:125, commercialFee:200, commercialAdditionalApplianceFee:125
 };
 const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
@@ -496,8 +498,15 @@ const PAY_text=Q("OK to send appointment confirmations by text?",["Yes","No"],{r
   notes:{"Yes":{t:"Tell them the confirmation text will ask for a photo of the model number tag, sent back by text.",k:"script"}}});
 // Defined last so earlier question ids (and any call in progress) stay the same.
 const CU_type=Q("Home or business?",["Home","Business"],{req:1,
-  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+". Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
+  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+" ($"+FEES.commercialAdditionalApplianceFee+" each additional appliance), more for farther cities the same as residential. Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
 const isCommercial=()=>S.g[CU_type.id]==="Business";
+// Business calls type the brand in (commercial brands aren't in the residential list).
+const SH_brandTyped=Q("Brand of appliance (type it in)",null,{req:1,note:"Type the brand exactly as it appears on the unit."});
+function sharedQs(){ return isCommercial() ? SHARED.filter(q=>q!==SH_brandOther).map(q=>q===SH_brand?SH_brandTyped:q) : SHARED; }
+function brandOf(u){
+  if(isCommercial()) return String(u.ans[SH_brandTyped.id]||"").trim();
+  return String((u.ans[SH_brand.id]==="Other"?u.ans[SH_brandOther.id]:u.ans[SH_brand.id])||"").trim();
+}
 const CUST_QS=[CU_ret,CU_type,CU_city];
 const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,PAY_fee,PAY_slot,PAY_text];
 
@@ -537,7 +546,7 @@ function unitQuestions(u){
   const out=[]; const app=appOf(u);
   if(app) app.qs.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
   if(u.svc==="Warranty") WARRANTY_QS.forEach(q=>{ if(!q.info && visible(q,u.ans)) out.push(q); });
-  if((u.svc==="Diagnosis"||u.svc==="Warranty") && app) SHARED.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
+  if((u.svc==="Diagnosis"||u.svc==="Warranty") && app) sharedQs().forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
   return out;
 }
 function globalQuestions(){
@@ -583,7 +592,7 @@ function render(){
     const app=appOf(u);
     if(app){
       h+='<div class="sec"><h2>'+esc(u.svc||"")+' — '+esc(app.name)+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+app.qs.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
-      if(u.svc==="Diagnosis"||u.svc==="Warranty") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+SHARED.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+sharedQs().filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
     }
   });
   h+='<div class="sec"><div class="sbody"><button class="opt" id="addUnit" style="border-style:dashed;font-weight:700">+ Add another appliance</button></div></div>';
@@ -598,19 +607,20 @@ function renderFaqs(){
 function feeParts(){
   const city=S.g[CU_city.id]; const parts=[];
   const cityFee = city && FEES.cities[city] ? FEES.cities[city].fee : null;
-  // Business calls use the commercial fee; an "Other" city still needs the ZIP lookup.
-  const base = isCommercial() && cityFee!=null ? FEES.commercialFee : cityFee;
+  // Business calls: commercial fee plus the same distance add-on a home pays
+  // (city fee minus the standard fee). An "Other" city still needs the ZIP lookup.
+  const base = isCommercial() && cityFee!=null ? FEES.commercialFee+Math.max(0,cityFee-FEES.standardFee) : cityFee;
   const full=S.units.filter(u=>chargeOf(u)==="full");
   S.units.forEach(u=>{ if(u.svc==="Warranty"&&chargeOf(u)==="covered") parts.push("$0 "+(warrantyCo(u)||"warranty")+" covered"); });
   let armis=0; S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null){ armis+=a; parts.push("+$"+a+" Armis fee collected on site"); } });
   if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?armis:null,parts};
   let total=base;
   if(base!=null) parts.push("$"+base+" "+(isCommercial()?"commercial, ":"")+city); else if(city==="Other") parts.push("ZIP lookup needed");
-  const anyPremium=full.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
+  const anyPremium=full.some(u=>{ const b=brandOf(u).toLowerCase(); return b && FEES.premiumBrands.some(p=>b.includes(p.toLowerCase())); });
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
   const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
-  if(full.length>1){ const extra=(full.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
+  if(full.length>1){ const extra=(full.length-1)*(isCommercial()?FEES.commercialAdditionalApplianceFee:FEES.additionalApplianceFee); if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
   if(armis && total!=null) total+=armis;
   return {total,parts};
 }
@@ -659,7 +669,7 @@ function updateChecklist(){
     ["CSR picked",!!S.csr],
     ["Service type + appliance"+(S.units.length>1?" (all)":""),S.units.every(u=>u.svc&&u.app)],
     ["Main issue + follow-ups"+(S.units.length>1?" (all)":""),S.units.every(mainDone)],
-    ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!u.ans[SH_brand.id])],
+    ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!brandOf(u))],
     ...(S.units.some(u=>u.svc==="Warranty")?[["Warranty company + details",S.units.filter(u=>u.svc==="Warranty").every(u=>WARRANTY_QS.filter(q=>!q.info&&visible(q,u.ans)).every(q=>q.type==="text"?!textProblem(q,u.ans[q.id]):!!u.ans[q.id]))]]:[]),
     ["City + fee confirmed",!!(S.g[CU_city.id]&&S.g[PAY_fee.id]==="Yes")],
     ["Who's paying settled",payDone()],
@@ -705,7 +715,7 @@ function buildNote(incomplete){
     if(app){
       app.qs.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
       if(u.svc==="Warranty"){ L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?"  |  Work order: "+u.ans[W_sr.id].trim().toUpperCase():"")+(visible(W_armisSrc,u.ans)&&u.ans[W_armisSrc.id]?"  |  "+u.ans[W_armisSrc.id]:"")+(visible(W_armisFee,u.ans)&&u.ans[W_armisFee.id]?"  |  Armis fee: "+u.ans[W_armisFee.id]+(armisCollect(u)!=null?" ($"+armisCollect(u)+")":""):"")+(visible(W_sup,u.ans)&&u.ans[W_sup.id]?"  |  Supervisor confirmed: "+u.ans[W_sup.id]:"")+(visible(W_area,u.ans)&&u.ans[W_area.id]?"  |  "+u.ans[W_area.id]:"")); if(!String(u.ans[SH_model.id]||"").trim()) L.push("Model/serial: NOT YET. Customer asked to text model tag photo; tech to collect on site if needed."); }
-      if(u.svc==="Diagnosis"||u.svc==="Warranty") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") sharedQs().filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
     }
     L.push("");
   });
@@ -906,7 +916,7 @@ function cleanLabel(q){
 }
 function unitLine(u){
   const app=appOf(u); const L=[];
-  const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||""):u.ans[SH_brand.id];
+  const brand=brandOf(u);
   const model=String(u.ans[SH_model.id]||"").trim();
   const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
   L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord+(model?" (model "+model+")":""));
