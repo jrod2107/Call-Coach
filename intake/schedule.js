@@ -4,10 +4,11 @@
    index.html and beta.html. Needs window.__P2.callFn and a #schedBox element. */
 (function(){
 const P2=window.__P2, box=document.getElementById("schedBox");
-if(!box||!P2||!P2.callFn) return;
+if(!box||!P2||!P2.callFn||!window.SchedPoints) return;
 
 const DAYS=7, MAX_WEEKS=4, REFRESH_MS=60000;
-const NEAR=6, FULL=7;   // "Max 6-7 jobs per tech per day"
+// Points and caps: intake/points.js + intake/schedule-settings.js (Scheduling Playbook rules).
+const SP=window.SchedPoints, CFG=window.SCHED_SETTINGS||{crewTogether:true,crewCap:7,sameDayExtra:1,points:{},commercialTags:[],applianceTags:[]};
 let tz="America/Chicago", data=null, err="", loading=false, seq=0, week=0, loadedAt=0, wasOnline=null, lastArea=null;
 const open=new Set();
 
@@ -24,13 +25,20 @@ css.textContent=[
 '.sc-head{display:flex;align-items:center;gap:6px;width:100%;padding:7px 9px;background:#f9fafb;border:0;cursor:pointer;font:inherit;text-align:left;color:inherit}',
 '.sc-head:hover{background:#eff6ff}',
 '.sc-caret{font-size:10px;color:#6b7280;width:9px}',
-'.sc-date{font-weight:800;font-size:12.5px}',
-'.sc-tag{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:1px 6px}',
+'.sc-date{font-weight:800;font-size:12.5px;white-space:nowrap}',
+'.sc-tag{white-space:nowrap;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:#dbeafe;color:#1e40af;border-radius:999px;padding:1px 6px}',
 '.sc-tag.in{background:#059669;color:#fff}',
 '.sc-load{margin-left:auto;font-size:11px;font-weight:800;border-radius:999px;padding:1px 8px;background:#e5e7eb;color:#374151;white-space:nowrap}',
 '.sc-load.near{background:#fde68a;color:#78350f}',
 '.sc-load.full{background:#fee2e2;color:#b91c1c}',
 '.sc-load.none{background:#f3f4f6;color:#6b7280}',
+'.sc-load.over{background:#b91c1c;color:#fff}',
+'.sc-techs{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}',
+'.sc-tech{font-size:10.5px;font-weight:800;border-radius:999px;padding:1px 7px;background:#e5e7eb;color:#374151}',
+'.sc-tech.near{background:#fde68a;color:#78350f}',
+'.sc-tech.full{background:#fee2e2;color:#b91c1c}',
+'.sc-tech.over{background:#b91c1c;color:#fff}',
+'.sc-pts{display:inline-block;font-size:9.5px;font-weight:800;border-radius:999px;padding:0 6px;margin-left:4px;background:#ede9fe;color:#5b21b6;vertical-align:1px}',
 '.sc-body{padding:6px 9px 8px}',
 '.sc-sub{font-size:11.5px;color:#4b5563}',
 '.sc-cities{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}',
@@ -73,8 +81,26 @@ function load(silent){
 }
 
 function jobEnd(j){ return j.window?+new Date(j.start)+j.window*60000:+new Date(j.end); }
-// Jobs on the busiest tech's day. Two techs on one job count once for each of them.
-function dayLoad(jobs){ const per={}; let max=0; jobs.forEach(j=>(j.techs||[]).forEach(t=>{ per[t]=(per[t]||0)+1; if(per[t]>max) max=per[t]; })); return max||jobs.length; }
+const RANK={open:0,near:1,full:2,over:3};
+const fmtPts=n=>String(Math.round(n*10)/10);
+// One line for the day header: crew points, or the busiest tech's status with each tech's points below.
+function loadLabel(load){
+  const rows=load.rows, worst=rows.reduce((w,r)=>RANK[SP.status(r)]>RANK[w]?SP.status(r):w,"open");
+  const tag=s=>s==="over"?' · over cap':s==="full"?' · full':s==="near"?' · near cap':'';
+  // At the cap: say whether the same-day point is still free or already used.
+  const fullTag=r=>r.points>r.cap?' · same-day used':r.extra?' · same-day only':' · full';
+  if(load.mode==="crew"){ const r=rows[0], s=SP.status(r); return {cls:worst,text:fmtPts(r.points)+'/'+r.cap+' pts'+(s==="full"?fullTag(r):tag(s)),
+    tip:'Jacob and Jules ride together: every job counts once against the crew cap of '+r.cap+(r.extra?' (+'+r.extra+' for same-day)':'')+'.'}; }
+  // Per tech: a job shared by two techs counts for each, so no day total here; name who is full instead.
+  const fullNames=rows.filter(r=>RANK[SP.status(r)]>=2).map(r=>r.who), nearNames=rows.filter(r=>SP.status(r)==="near").map(r=>r.who);
+  const text=fullNames.length?fullNames.join(' + ')+' full':nearNames.length?nearNames.join(' + ')+' near cap':'Room for all';
+  return {cls:worst,text,tip:'Points per tech are listed below the date.'};
+}
+function jobBadge(s){
+  if(s.points<=1) return '';
+  const why=[s.commercial?'Commercial':'',s.appliances>1?s.appliances+' appliances':''].filter(Boolean).join(', ');
+  return '<span class="sc-pts" title="'+esc(why)+'">'+fmtPts(s.points)+' pts'+(why?' · '+esc(why):'')+'</span>';
+}
 
 /* ---------- render ---------- */
 function paint(){
@@ -98,20 +124,25 @@ function paint(){
                   :'<div class="note">No <b>'+esc(a)+'</b> jobs booked in these 7 days yet.</div>'; }
 
   keys.forEach(k=>{
-    const d=by[k], n=d.jobs.length, ld=dayLoad(d.jobs), hit=inArea(k), isOpen=open.has(k);
-    const am=d.jobs.filter(j=>isAM(j.start)).length;
+    const d=by[k], n=d.jobs.length, hit=inArea(k), isOpen=open.has(k);
+    const load=SP.dayLoad(d.jobs,CFG), lab=loadLabel(load);
+    const pts=new Map(load.scored.map(s=>[s.job,s]));
+    const amPts=load.scored.filter(s=>isAM(s.job.start)).reduce((a,s)=>a+s.points,0);
+    const allPts=load.scored.reduce((a,s)=>a+s.points,0);
     const cities={}; d.jobs.forEach(j=>{ const c=title(j.city)||"No city"; cities[c]=(cities[c]||0)+1; });
-    const cls=n===0?'none':ld>=FULL?'full':ld>=NEAR?'near':'';
-    const lbl=n===0?'No jobs':n+(n===1?' job':' jobs')+(ld>=FULL?' · full':ld>=NEAR?' · near limit':'');
+    const cls=n===0?'none':lab.cls==='open'?'':lab.cls;
+    const lbl=n===0?'No jobs':lab.text;
     h+='<div class="sc-day'+(hit?' area':'')+'"><button class="sc-head" data-scday="'+k+'" aria-expanded="'+isOpen+'"'+(n?'':' disabled style="cursor:default"')+'>'+
        '<span class="sc-caret">'+(n?(isOpen?'▾':'▸'):'')+'</span><span class="sc-date">'+esc(dayLabel(k))+'</span>'+
        (k===today?'<span class="sc-tag">Today</span>':'')+(hit?'<span class="sc-tag in">In area</span>':'')+
-       '<span class="sc-load '+cls+'" title="Busiest tech has '+ld+' on this day">'+lbl+'</span></button>';
+       '<span class="sc-load '+cls+'" title="'+esc(lab.tip)+'">'+esc(lbl)+'</span></button>';
     if(n||d.events.length){
       h+='<div class="sc-body">';
-      if(n) h+='<div class="sc-sub">AM '+am+' · PM '+(n-am)+'</div><div class="sc-cities">'+Object.keys(cities).sort().map(c=>'<span class="sc-city'+(norm(c)===an?' hit':'')+'">'+esc(c)+(cities[c]>1?' '+cities[c]:'')+'</span>').join('')+'</div>';
+      if(n) h+='<div class="sc-sub">'+n+(n===1?' job':' jobs')+' · AM '+fmtPts(amPts)+' pts · PM '+fmtPts(allPts-amPts)+' pts</div>';
+      if(n&&load.mode==="tech") h+='<div class="sc-techs">'+load.rows.map(r=>{ const s=SP.status(r); return '<span class="sc-tech '+(s==='open'?'':s)+'">'+esc(r.who)+' '+fmtPts(r.points)+(r.cap!=null?'/'+r.cap:'')+'</span>'; }).join('')+'</div>';
+      if(n) h+='<div class="sc-cities">'+Object.keys(cities).sort().map(c=>'<span class="sc-city'+(norm(c)===an?' hit':'')+'">'+esc(c)+(cities[c]>1?' '+cities[c]:'')+'</span>').join('')+'</div>';
       d.events.forEach(e=>{ h+='<div class="sc-block"><b>'+(e.all_day?'All day':esc(span(e.start,e.end)))+'</b> · '+esc(e.name||"Calendar block")+'</div>'; });
-      if(isOpen) d.jobs.forEach(j=>{ h+='<div class="sc-job"><b>'+esc(span(j.start,jobEnd(j)))+'</b> · '+esc(title(j.city)||"No city")+' · '+esc(j.name||"")+
+      if(isOpen) d.jobs.forEach(j=>{ h+='<div class="sc-job"><b>'+esc(span(j.start,jobEnd(j)))+'</b> · '+esc(title(j.city)||"No city")+' · '+esc(j.name||"")+jobBadge(pts.get(j))+
         '<div class="hm">'+esc([j.desc,(j.techs||[]).map(t=>t.split(" ")[0]).join(" + "),j.status&&j.status!=="scheduled"?j.status:""].filter(Boolean).join(" · "))+'</div></div>'; });
       h+='</div>';
     }
