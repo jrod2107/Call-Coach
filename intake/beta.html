@@ -498,7 +498,7 @@ const PAY_text=Q("OK to send appointment confirmations by text?",["Yes","No"],{r
   notes:{"Yes":{t:"Tell them the confirmation text will ask for a photo of the model number tag, sent back by text.",k:"script"}}});
 // Defined last so earlier question ids (and any call in progress) stay the same.
 const CU_type=Q("Home or business?",["Home","Business"],{req:1,
-  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+" ($"+FEES.commercialAdditionalApplianceFee+" each additional appliance), more for farther cities the same as residential. Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
+  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+" ($"+FEES.commercialAdditionalApplianceFee+" each additional appliance), more for farther cities the same as residential. No premium-brand or built-in charges. Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
 const isCommercial=()=>S.g[CU_type.id]==="Business";
 // Business calls type the brand in (commercial brands aren't in the residential list).
 const SH_brandTyped=Q("Brand of appliance (type it in)",null,{req:1,note:"Type the brand exactly as it appears on the unit."});
@@ -616,9 +616,10 @@ function feeParts(){
   if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?armis:null,parts};
   let total=base;
   if(base!=null) parts.push("$"+base+" "+(isCommercial()?"commercial, ":"")+city); else if(city==="Other") parts.push("ZIP lookup needed");
-  const anyPremium=full.some(u=>{ const b=brandOf(u).toLowerCase(); return b && FEES.premiumBrands.some(p=>b.includes(p.toLowerCase())); });
+  // No premium rates on business calls: no premium-brand or built-in add-on.
+  const anyPremium=!isCommercial() && full.some(u=>{ const b=brandOf(u).toLowerCase(); return b && FEES.premiumBrands.some(p=>b.includes(p.toLowerCase())); });
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
-  const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
+  const anyBuiltIn=!isCommercial() && full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
   if(full.length>1){ const extra=(full.length-1)*(isCommercial()?FEES.commercialAdditionalApplianceFee:FEES.additionalApplianceFee); if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
   if(armis && total!=null) total+=armis;
@@ -699,7 +700,8 @@ function collectFlags(){
     if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag); }); }
   S.units.forEach(u=>scan(unitQuestions(u),u.ans));
   scan(globalQuestions(),S.g);
-  return [...new Set(flags)];
+  // Business calls carry no premium charges, so keep the built-in flag but drop the fee from it.
+  return [...new Set(flags.map(f=>isCommercial()?f.replace(/ — premium fee \+\$\d+$/,""):f))];
 }
 
 /* ---------- Note builder ---------- */
