@@ -38,6 +38,13 @@ css.textContent=[
 '.sc-tech.near{background:#fde68a;color:#78350f}',
 '.sc-tech.full{background:#fee2e2;color:#b91c1c}',
 '.sc-tech.over{background:#b91c1c;color:#fff}',
+'.sc-best{border:1px solid #c7d2fe;background:#f5f7ff;border-radius:8px;padding:8px 9px;margin:6px 0 8px}',
+'.sc-bt{font-weight:800;font-size:12.5px;color:#1e3a8a;margin-bottom:2px}',
+'.sc-spot{border-top:1px solid #e0e7ff;padding:6px 0 2px;margin-top:5px;font-size:12px}',
+'.sc-sl{display:flex;align-items:center;gap:6px}',
+'.sc-add{font-size:11px;font-weight:800;background:#dcfce7;color:#166534;border-radius:999px;padding:1px 7px}',
+'.sc-why{margin-left:auto;font-size:11.5px}',
+'.sc-whyb{font-size:11.5px;color:#374151;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:6px 7px;margin-top:4px;line-height:1.45}',
 '.sc-pts{display:inline-block;font-size:9.5px;font-weight:800;border-radius:999px;padding:0 6px;margin-left:4px;background:#ede9fe;color:#5b21b6;vertical-align:1px}',
 '.sc-body{padding:6px 9px 8px}',
 '.sc-sub{font-size:11.5px;color:#4b5563}',
@@ -68,8 +75,43 @@ const norm=s=>String(s||"").toLowerCase().replace(/\s+/g," ").trim();
 const title=s=>norm(s).replace(/(^|\s)[a-z]/g,c=>c.toUpperCase());
 function area(){ let c=""; try{ c=S.g[CU_city.id]||""; if(!c||c==="Other") c=S.cust.cityTxt||""; }catch(e){} c=title(c); return c.length>=3?c:""; }
 
+/* ---------- the caller's position and size, for drive-time ranking ---------- */
+const RT=window.SchedRoute;
+// Exact when a returning customer is picked in HCP (their address has coordinates);
+// otherwise the center of the city the CSR picked (approximate).
+function callerPoint(){
+  try{
+    const h=S.hcp||{}, list=(h.cust&&h.cust.addresses)||[];
+    const ad=list.find(x=>x.id===h.addrId)||(list.length===1?list[0]:null);
+    const lat=ad&&Number(ad.latitude), lng=ad&&Number(ad.longitude);
+    if(ad&&isFinite(lat)&&isFinite(lng)&&lat&&lng) return {lat,lng,exact:true,label:[ad.street,ad.city].filter(Boolean).join(", ")};
+  }catch(e){}
+  const c=area(), cc=(CFG.cityCenters||{})[c];
+  return cc?{lat:cc.lat,lng:cc.lng,exact:false,label:c}:null;
+}
+// Points the new job will take: same rules as booked jobs.
+function newJobPoints(){
+  let apps=[], biz=false;
+  try{ apps=[...new Set((S.units||[]).map(u=>u.app).filter(Boolean))]; biz=typeof isCommercial==="function"&&isCommercial(); }catch(e){}
+  return SP.jobPoints({tags:apps,customer_tags:biz?["Commercial"]:[],desc:""},CFG).points;
+}
+function hourOf(t){ const p=parts(t); return p.hour+p.minute/60; }
+
 /* ---------- data ---------- */
+let rankData=null, rankAt=0, rankSeq=0, rankErr="";
+const why=new Set();
+// The next rankDays days, starting tomorrow (same-day is offered separately).
+function loadRank(){
+  if(!P2.state().online||!RT) return;
+  const my=++rankSeq, first=addDays(dayKey(Date.now()),1);
+  const body={from:new Date(midnight(first)).toISOString(),to:new Date(midnight(addDays(first,CFG.rankDays||14))).toISOString()};
+  P2.callFn("hcp-schedule",body)
+    .then(d=>{ if(my!==rankSeq) return; rankData=Object.assign({first},d); rankErr=""; rankAt=Date.now(); })
+    .catch(e=>{ if(my!==rankSeq) return; rankErr=(e&&e.message)||"Could not load"; })
+    .then(()=>{ if(my===rankSeq) paint(); });
+}
 function load(silent){
+  if(callerPoint()) loadRank();
   if(!P2.state().online) return;
   const my=++seq; loading=true; if(!silent) paint();
   const first=addDays(dayKey(Date.now()),week*DAYS);
@@ -95,6 +137,53 @@ function loadLabel(load){
   const fullNames=rows.filter(r=>RANK[SP.status(r)]>=2).map(r=>r.who), nearNames=rows.filter(r=>SP.status(r)==="near").map(r=>r.who);
   const text=fullNames.length?fullNames.join(' + ')+' full':nearNames.length?nearNames.join(' + ')+' near cap':'Room for all';
   return {cls:worst,text,tip:'Points per tech are listed below the date.'};
+}
+/* Best spots for the caller: days in the next rankDays, ranked by added drive time. */
+function bestSpots(){
+  const pt=callerPoint();
+  if(!pt||!RT) return '';
+  let h='<div class="sc-best"><div class="sc-bt">Best spots for this caller</div>';
+  const where=pt.exact?'their address in HCP':'the center of '+esc(pt.label)+' (pick the customer in HCP for their exact address)';
+  if(!rankData) return h+'<div class="hm">'+(rankErr?'Couldn\'t rank days: '+esc(rankErr):'Ranking the next '+(CFG.rankDays||14)+' days…')+'</div></div>';
+  const newPts=newJobPoints(), work=CFG.workDays||[1,2,3,4,5];
+  const byDay={};
+  for(let i=0;i<(CFG.rankDays||14);i++){ const k=addDays(rankData.first,i); byDay[k]={jobs:[],events:[]}; }
+  (rankData.jobs||[]).forEach(j=>{ const d=byDay[dayKey(j.start)]; if(d) d.jobs.push(j); });
+  (rankData.events||[]).forEach(e=>{ const d=byDay[dayKey(e.start)]; if(d) d.events.push(e); });
+  const days=[];
+  Object.keys(byDay).forEach(k=>{
+    const d=byDay[k], dow=new Date(k+"T12:00:00Z").getUTCDay();
+    if(!work.includes(dow)&&!d.jobs.length) return; // no work that day
+    const pts=j=>SP.jobPoints(j,CFG).points, sum=js=>js.reduce((a,j)=>a+pts(j),0);
+    const asStops=js=>js.map(j=>({start:j.start,lat:j.lat,lng:j.lng,city:title(j.city)||"Stop",points:pts(j)}));
+    if(CFG.crewTogether){
+      days.push({key:k,label:dayLabel(k),jobs:asStops(d.jobs),events:d.events,load:{points:sum(d.jobs),cap:CFG.crewCap||7,extra:CFG.sameDayExtra||0}});
+    } else Object.keys(CFG.techs||{}).forEach(t=>{
+      const mine=d.jobs.filter(j=>(j.techs||[]).some(x=>x.split(" ")[0]===t));
+      const evs=d.events.filter(e=>!(e.techs||[]).length||(e.techs||[]).some(x=>x.split(" ")[0]===t));
+      days.push({key:k,label:dayLabel(k)+' · '+t,jobs:asStops(mine),events:evs,load:{points:sum(mine),cap:CFG.techs[t].cap,extra:CFG.sameDayExtra||0}});
+    });
+  });
+  const r=RT.rank(days,pt,CFG,{newPoints:newPts,blocks:CFG.blocks,blockCaps:CFG.blockCaps,hourOf});
+  h+='<div class="hm">From '+where+'. This job counts '+fmtPts(newPts)+(newPts===1?' point':' points')+'.</div>';
+  if(r.far) return h+'<div class="note">About '+r.fromShop+' min from the shop, over the '+(CFG.farMinutes||45)+'-minute limit. Check with the technician before offering a day.</div></div>';
+  if(!r.spots.length) return h+'<div class="note">No open spot in the next '+(CFG.rankDays||14)+' days within the point caps. Check with the technician.</div></div>';
+  r.spots.slice(0,3).forEach((s,i)=>{
+    const id=s.day+s.block+s.label, open=why.has(id);
+    h+='<div class="sc-spot"><div class="sc-sl"><b>'+esc(s.label)+' · '+s.block+'</b><span class="sc-add">+'+s.added+' min drive</span>'+
+       '<button class="hlink sc-why" data-why="'+esc(id)+'">'+(open?'Hide':'Why?')+'</button></div>'+
+       '<div class="hm">'+(s.emptyDay?'Nothing booked yet: '+s.added+' min out from the shop.':'After '+esc(s.after)+(s.before?', before '+esc(s.before):', last stop of the day'))+'</div>';
+    if(open){
+      const legs=s.before
+        ? esc(s.after)+' → this caller '+s.legs.toNew+' min, then → '+esc(s.before)+' '+s.legs.fromNew+' min, instead of '+esc(s.after)+' → '+esc(s.before)+' '+s.legs.skipped+' min. Adds '+s.added+' min.'
+        : esc(s.after)+' → this caller '+s.legs.toNew+' min.';
+      h+='<div class="sc-whyb">'+legs+'<br>Day after booking: '+fmtPts(s.pointsAfter)+'/'+s.cap+' pts · '+s.block+' '+fmtPts(s.blockPointsAfter)+'/'+s.blockCap+' pts.'+
+         (s.unplaced?'<br>'+s.unplaced+' job(s) that day have no map position and were left out of the route.':'')+
+         (pt.exact?'':'<br>Drive times use the city center, so they are rough until the exact address is known.')+'</div>';
+    }
+    h+='</div>';
+  });
+  return h+'<div class="sc-foot">Drive times are estimates from straight-line distance. Customers still get a 4-hour AM/PM block; the exact window is set the day before.</div></div>';
 }
 function jobBadge(s){
   if(s.points<=1) return '';
@@ -122,6 +211,7 @@ function paint(){
   if(a){ const hits=keys.filter(inArea);
     h+=hits.length?'<div class="note script"><b>'+esc(a)+'</b> is already on the schedule '+hits.map(k=>'<b>'+esc(dayLabel(k))+'</b>').join(', ')+'. Aim for one of those days.</div>'
                   :'<div class="note">No <b>'+esc(a)+'</b> jobs booked in these 7 days yet.</div>'; }
+  h+=bestSpots();
 
   keys.forEach(k=>{
     const d=by[k], n=d.jobs.length, hit=inArea(k), isOpen=open.has(k);
@@ -158,13 +248,19 @@ function paint(){
 }
 
 /* ---------- wiring ---------- */
+// Repaint when anything the panel shows changes: the caller's city or address, or the new job's size.
+let lastSig="";
+function sig(){ const p=callerPoint(); return area()+"|"+(p?p.lat.toFixed(4)+","+p.lng.toFixed(4):"")+"|"+newJobPoints(); }
 function sync(){
   const on=P2.state().online;
-  if(on!==wasOnline){ wasOnline=on; if(on) load(); else { data=null; err=""; loadedAt=0; paint(); } return; }
-  if(area()!==lastArea) paint();
+  if(on!==wasOnline){ wasOnline=on; if(on) load(); else { data=null; rankData=null; err=""; loadedAt=0; paint(); } return; }
+  const s=sig(); if(s===lastSig) return; lastSig=s;
+  if(callerPoint()&&!rankData) loadRank();
+  paint();
 }
 box.addEventListener("click",e=>{
   if(e.target.id==="scRefresh"){ load(); return; }
+  const w=e.target.closest("[data-why]"); if(w){ const id=w.dataset.why; if(why.has(id)) why.delete(id); else why.add(id); paint(); return; }
   if(e.target.id==="scPrev"&&week>0){ week--; data=null; open.clear(); load(); return; }
   if(e.target.id==="scNext"&&week<MAX_WEEKS-1){ week++; data=null; open.clear(); load(); return; }
   const b=e.target.closest("[data-scday]"); if(b){ const k=b.dataset.scday; if(open.has(k)) open.delete(k); else open.add(k); paint(); }
