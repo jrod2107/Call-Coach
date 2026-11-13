@@ -37,6 +37,11 @@ window.SCHED_SETTINGS = {
   blockCaps: { AM: 4, PM: 3 },
   // More than this many minutes from the shop: no automatic slots, check with the tech.
   farMinutes: 45,
+  // At least this many minutes from the shop: far out, so only offer the first stop of a morning.
+  farOutMinutes: 25,
+  // Fill the day: days already at `from` points or more rank as if the drive were
+  // `bonusMinutes` shorter, so they fill toward 6-7 before an empty day is started.
+  fill: { from: 4, bonusMinutes: 10 },
   // How many days ahead to rank (today is left out: same-day is offered separately).
   rankDays: 14,
   // Days that take bookings (0 = Sunday ... 6 = Saturday). Other days only show if a job is already on them.

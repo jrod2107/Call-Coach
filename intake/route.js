@@ -63,6 +63,8 @@
         const nextH = next ? opts.hourOf(next.start) : h1;
         // The new stop must land inside this block: after prev starts, before next starts.
         if (prevH >= h1 || nextH < h0) continue;
+        // Far-out callers go first in the day: only the AM, straight from the shop.
+        if (opts.farOut && (block !== "AM" || !prev.isShop)) continue;
         const toNew = driveMinutes(prev, caller, cfg);
         const fromNew = next ? driveMinutes(caller, next, cfg) : 0;
         const skipped = next ? driveMinutes(prev, next, cfg) : 0;
@@ -76,7 +78,7 @@
         after: best.prev.isShop ? "the shop (first stop)" : best.prev.label,
         before: best.next ? best.next.label : null,
         legs: { toNew: Math.round(best.toNew), fromNew: Math.round(best.fromNew), skipped: Math.round(best.skipped) },
-        pointsAfter: day.load.points + opts.newPoints, cap: day.load.cap,
+        pointsBefore: day.load.points, pointsAfter: day.load.points + opts.newPoints, cap: day.load.cap,
         blockPointsAfter: blockPts + opts.newPoints, blockCap: opts.blockCaps[block],
         unplaced,
         emptyDay: jobs.length === 0,
@@ -93,9 +95,17 @@
     if (!hasPt(caller) || !hasPt(cfg.shop)) return { far: false, fromShop: null, spots: [] };
     const fromShop = Math.round(driveMinutes(cfg.shop, caller, cfg));
     if (fromShop > (cfg.farMinutes ?? 45)) return { far: true, fromShop, spots: [] };
-    const spots = days.flatMap((d) => daySpots(d, caller, cfg, opts));
-    spots.sort((a, b) => a.added - b.added || (a.day < b.day ? -1 : a.day > b.day ? 1 : a.block < b.block ? -1 : 1));
-    return { far: false, fromShop, spots };
+    const farOut = fromShop >= (cfg.farOutMinutes ?? 25);
+    const spots = days.flatMap((d) => daySpots(d, caller, cfg, { ...opts, farOut }));
+    // Fill the day: a day already at fill.from points gets a head start of
+    // fill.bonusMinutes, so it outranks an emptier day unless that one is much closer.
+    const fill = cfg.fill || {};
+    spots.forEach((s) => {
+      s.fillBonus = s.pointsBefore >= (fill.from ?? 4) ? (fill.bonusMinutes ?? 10) : 0;
+      s.score = s.added - s.fillBonus;
+    });
+    spots.sort((a, b) => a.score - b.score || (a.day < b.day ? -1 : a.day > b.day ? 1 : a.block < b.block ? -1 : 1));
+    return { far: false, farOut, fromShop, spots };
   }
 
   const api = { miles, driveMinutes, daySpots, rank };

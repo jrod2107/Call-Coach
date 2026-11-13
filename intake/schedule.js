@@ -44,6 +44,7 @@ css.textContent=[
 '.sc-sl{display:flex;align-items:center;gap:6px}',
 '.sc-add{font-size:11px;font-weight:800;background:#dcfce7;color:#166534;border-radius:999px;padding:1px 7px}',
 '.sc-why{margin-left:auto;font-size:11.5px}',
+'.sc-fill{font-size:10.5px;font-weight:800;background:#fef3c7;color:#92400e;border-radius:999px;padding:1px 7px}',
 '.sc-whyb{font-size:11.5px;color:#374151;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:6px 7px;margin-top:4px;line-height:1.45}',
 '.sc-pts{display:inline-block;font-size:9.5px;font-weight:800;border-radius:999px;padding:0 6px;margin-left:4px;background:#ede9fe;color:#5b21b6;vertical-align:1px}',
 '.sc-body{padding:6px 9px 8px}',
@@ -167,17 +168,22 @@ function bestSpots(){
   const r=RT.rank(days,pt,CFG,{newPoints:newPts,blocks:CFG.blocks,blockCaps:CFG.blockCaps,hourOf});
   h+='<div class="hm">From '+where+'. This job counts '+fmtPts(newPts)+(newPts===1?' point':' points')+'.</div>';
   if(r.far) return h+'<div class="note">About '+r.fromShop+' min from the shop, over the '+(CFG.farMinutes||45)+'-minute limit. Check with the technician before offering a day.</div></div>';
+  if(r.farOut) h+='<div class="note">Far out, about '+r.fromShop+' min from the shop: only offered as the first stop of a morning, so the crew starts there and works back.</div>';
   if(!r.spots.length) return h+'<div class="note">No open spot in the next '+(CFG.rankDays||14)+' days within the point caps. Check with the technician.</div></div>';
   r.spots.slice(0,3).forEach((s,i)=>{
     const id=s.day+s.block+s.label, open=why.has(id);
     h+='<div class="sc-spot"><div class="sc-sl"><b>'+esc(s.label)+' · '+s.block+'</b><span class="sc-add">+'+s.added+' min drive</span>'+
+       (s.fillBonus?'<span class="sc-fill" title="This day already has '+fmtPts(s.pointsBefore)+' points">Fills the day</span>':'')+
        '<button class="hlink sc-why" data-why="'+esc(id)+'">'+(open?'Hide':'Why?')+'</button></div>'+
        '<div class="hm">'+(s.emptyDay?'Nothing booked yet: '+s.added+' min out from the shop.':'After '+esc(s.after)+(s.before?', before '+esc(s.before):', last stop of the day'))+'</div>';
     if(open){
+      const from=/^the shop/.test(s.after)?'Shop':s.after;
       const legs=s.before
-        ? esc(s.after)+' → this caller '+s.legs.toNew+' min, then → '+esc(s.before)+' '+s.legs.fromNew+' min, instead of '+esc(s.after)+' → '+esc(s.before)+' '+s.legs.skipped+' min. Adds '+s.added+' min.'
-        : esc(s.after)+' → this caller '+s.legs.toNew+' min.';
+        ? esc(from)+' → this caller '+s.legs.toNew+' min, then → '+esc(s.before)+' '+s.legs.fromNew+' min, instead of '+esc(from)+' → '+esc(s.before)+' '+s.legs.skipped+' min. Adds '+s.added+' min.'
+        : esc(from)+' → this caller '+s.legs.toNew+' min.';
       h+='<div class="sc-whyb">'+legs+'<br>Day after booking: '+fmtPts(s.pointsAfter)+'/'+s.cap+' pts · '+s.block+' '+fmtPts(s.blockPointsAfter)+'/'+s.blockCap+' pts.'+
+         (s.fillBonus?'<br>Ranked ahead of emptier days because this day already has '+fmtPts(s.pointsBefore)+' points (counts as '+s.fillBonus+' min shorter).':'')+
+         (r.farOut?'<br>First stop of the morning because the address is far out.':'')+
          (s.unplaced?'<br>'+s.unplaced+' job(s) that day have no map position and were left out of the route.':'')+
          (pt.exact?'':'<br>Drive times use the city center, so they are rough until the exact address is known.')+'</div>';
     }
