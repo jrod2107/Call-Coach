@@ -6,6 +6,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // The HCP API key lives ONLY here, as the HCP_API_KEY secret (shared with `hcp`).
 // verify_jwt=true: only signed-in CSRs can call this function.
 //
+// Each job carries its street address, tags and block length (minutes) so the
+// intake page can count points per tech and rank days by drive time.
+//
 // Behaviour checked against the live HCP API on 2026-11-12:
 //   /jobs   honours scheduled_start_min / scheduled_start_max, page_size up to 200.
 //   /events ignores date filters, so every event is fetched and filtered here.
@@ -195,6 +198,9 @@ function eventsInRange(items: Obj[], from: number, to: number) {
   return { events: out, unsupported };
 }
 
+// A coordinate HCP may or may not have filled in; null when missing or not a number.
+const coord = (v: unknown) => { const n = v == null || v === "" ? NaN : Number(v); return isFinite(n) && n !== 0 ? n : null; };
+
 function slimJob(j: Obj) {
   const sch = obj(j.schedule), cust = obj(j.customer), addr = obj(j.address);
   return {
@@ -205,12 +211,27 @@ function slimJob(j: Obj) {
     window: sch.arrival_window == null ? null : Number(sch.arrival_window),
     status: str(j.work_status),
     name: [cust.first_name, cust.last_name].map(str).filter(Boolean).join(" ") || str(cust.company),
+    company: str(cust.company),
+    // Street address for drive-time ranking. lat/lng are HCP's own when it has them.
+    street: [addr.street, addr.street_line_2].map(str).filter(Boolean).join(" "),
     city: str(addr.city),
+    state: str(addr.state),
     zip: str(addr.zip),
+    lat: coord(addr.latitude),
+    lng: coord(addr.longitude),
+    // Job and customer tags (appliances, Business, Warranty, Return Visit, ...) drive the point count.
+    tags: arr(j.tags).map(str).filter(Boolean),
+    customer_tags: arr(cust.tags).map(str).filter(Boolean),
     desc: str(j.description).slice(0, 160),
     techs: arr(j.assigned_employees).map(techName).filter(Boolean),
     visit: 0,
   };
+}
+
+// Length of the calendar block in minutes (1-hour job = 60, 2-hour block = 120).
+function blockMinutes(start: string, end: string) {
+  const m = (+new Date(end) - +new Date(start)) / 60000;
+  return isFinite(m) && m > 0 ? Math.round(m) : null;
 }
 
 // A job with several visits is listed once, spanning first visit to last. For
@@ -263,6 +284,7 @@ Deno.serve(async (req: Request) => {
   const visits = (await Promise.all(live.map(jobVisits))).flat();
   const jobs = visits
     .filter((j) => { const t = +new Date(j.start); return !isNaN(t) && t >= from && t < to; })
+    .map((j) => ({ ...j, minutes: blockMinutes(j.start, j.end) }))
     .sort((a, b) => (a.start < b.start ? -1 : 1));
 
   // Calendar events are optional: the schedule still works if they cannot be read.
