@@ -507,8 +507,33 @@ function brandOf(u){
   if(isCommercial()) return String(u.ans[SH_brandTyped.id]||"").trim();
   return String((u.ans[SH_brand.id]==="Other"?u.ans[SH_brandOther.id]:u.ans[SH_brand.id])||"").trim();
 }
+/* ---------- Business calls: billing, on-site contact and the business's own process ----------
+   These replace the homeowner / landlord / tenant questions when "Business" is picked. */
+const forBiz={onlyIf:()=>isCommercial()};
+const COM_name=Q("Business name",null,Object.assign({req:1,note:"Saved as the company name on the customer in HCP."},forBiz));
+const COM_onsite=Q("Who will meet the tech on site? (name and phone)",null,Object.assign({req:1,
+  note:'"Who should our technician ask for when he arrives, and what\'s the best number to reach them that day?"'},forBiz));
+const COM_hours=Q("Business hours, or when the tech can arrive",null,Object.assign({note:"Restaurants often can't have a tech in the kitchen during a rush. Note any times to avoid."},forBiz));
+const COM_payer=Q("Who approves repairs and pays the bill?",["The person on site","A manager or owner off site","Corporate / facilities office"],Object.assign({req:1,
+  note:'"Who signs off on repair costs and handles the invoice? Is that you, or someone else at the company?"'},forBiz));
+const COM_payerInfo=Q("Approver's name, phone and email",null,{req:1,onlyIf:forBiz.onlyIf,showIf:[COM_payer.id,["A manager or owner off site","Corporate / facilities office"]],
+  note:"We contact them to approve any repair cost before the work is done, and the invoice goes to them."});
+const COM_po=Q("Work order or PO number (if they gave one)",null,Object.assign({note:"Many companies won't pay an invoice without their work order or PO number on it."},forBiz));
+const COM_limit=Q("Pre-approved repair limit (exact $ or \"Diagnostic Only\")",null,Object.assign({
+  note:'"If our tech has the part on the truck he can often fix it on the spot. Is there an amount he can go ahead with without calling for approval?"'},forBiz));
+const COM_process=Q("Does this business have its own service process?",["Yes","No","Not sure"],Object.assign({req:1,
+  note:'Ask: "Is there anything your company needs from our technician on site, like check-in photos, before and after photos, a work order number, or a report sent to someone?"',
+  notes:{"Not sure":{t:"Ask who would know, and note their name and number below so the office can confirm before the visit.",k:"warn"}}},forBiz));
+const COM_steps=Q("What does their process require?",null,{req:1,min:10,onlyIf:forBiz.onlyIf,showIf:[COM_process.id,["Yes","Not sure"]],
+  note:"For example: photo of the front door or storefront on arrival, before and after photos of the repair, photo of the failed part, check in and out with a named person."});
+const COM_report=Q("Where do the photos and report go, and who do we update?",null,{req:1,min:6,onlyIf:forBiz.onlyIf,showIf:[COM_process.id,["Yes","Not sure"]],
+  note:"The email address or text number, and the person on their team the tech or office should keep updated."});
+// The residential payment questions don't apply to a business.
+[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo].forEach(q=>{ q.onlyIf=()=>!isCommercial(); });
 const CUST_QS=[CU_ret,CU_type,CU_city];
-const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,PAY_fee,PAY_slot,PAY_text];
+const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,
+  COM_name,COM_onsite,COM_hours,COM_payer,COM_payerInfo,COM_po,COM_limit,COM_process,COM_steps,COM_report,
+  PAY_fee,PAY_slot,PAY_text];
 
 const FAQS=[
 ["What does the service call fee cover?","It covers a complete diagnosis of the appliance issue and an estimate for the repair. The fee is waived if the customer approves a repair estimate."],
@@ -540,7 +565,7 @@ function textProblem(q,v){
   if(q.check) return q.check(v);
   return "";
 }
-function visible(q,ans){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
+function visible(q,ans){ if(q.onlyIf&&!q.onlyIf()) return false; if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
 function appOf(u){ const list = u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===u.app)||null; }
 function unitQuestions(u){
   const out=[]; const app=appOf(u);
@@ -700,6 +725,12 @@ function collectFlags(){
     if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag); }); }
   S.units.forEach(u=>scan(unitQuestions(u),u.ans));
   scan(globalQuestions(),S.g);
+  // A business with its own process: put what it requires at the very top of the note for the tech.
+  if(isCommercial()&&["Yes","Not sure"].includes(S.g[COM_process.id])){
+    const st=String(S.g[COM_steps.id]||"").trim(), to=String(S.g[COM_report.id]||"").trim();
+    flags.push("BUSINESS PROCESS"+(S.g[COM_process.id]==="Not sure"?" (TO CONFIRM)":"")+": "+(st||"see notes")+(to?" | Send to / update: "+to:""));
+  }
+  if(isCommercial()&&String(S.g[COM_po.id]||"").trim()) flags.push("WORK ORDER / PO: "+String(S.g[COM_po.id]).trim()+" (put it on the invoice)");
   // Business calls carry no premium charges, so keep the built-in flag but drop the fee from it.
   return [...new Set(flags.map(f=>isCommercial()?f.replace(/ — premium fee \+\$\d+$/,""):f))];
 }
@@ -998,6 +1029,7 @@ async function ensureCustomer(){
   }
   const cust={first_name:(c.first||"").trim()||null,last_name:(c.last||"").trim()||null,email:(c.email||"").trim()||null,
     mobile_number:digits(c.phone)||null,notifications_enabled:S.g[PAY_text.id]!=="No",addresses:[addr]};
+  if(isCommercial()&&String(S.g[COM_name.id]||"").trim()) cust.company=String(S.g[COM_name.id]).trim();
   const r=await call("customer_create",{customer:cust});
   h.cid=r.id; h.cust=r; h.addrId=(r.addresses&&r.addresses[0]&&r.addresses[0].id)||null;
   if(!h.addrId){ const a=await call("address_create",{customer_id:r.id,address:addr}); h.addrId=a.id; }
