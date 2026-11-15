@@ -82,6 +82,8 @@ textarea.qtext{width:100%;min-height:44px;padding:8px 10px;border:2px solid #e5e
 #login input{font:inherit;padding:10px;border:2px solid #e5e7eb;border-radius:6px}
 #login button{background:#1e40af;color:#fff;border:0;border-radius:6px;padding:11px;font-weight:700;font-size:14px;cursor:pointer}
 #loginMsg{font-size:12px;color:#b91c1c;min-height:16px}
+#loginMsg.ok{color:#047857}
+#login button[disabled]{opacity:.6;cursor:default}
 #login .alt{font-size:12px;color:#6b7280;text-align:center}
 .whoami{font-size:13px;font-weight:700;display:none}
 body.online .whoami,body.online #signOut{display:inline-block}
@@ -173,6 +175,7 @@ body.online .hchip{display:inline-block}
       <div class="ptitle">Call checklist</div>
       <ul class="checklist" id="check"></ul>
     </div>
+    <div class="psec" id="schedBox"></div>
     <div class="psec">
       <div class="ptitle">Reminders</div>
       <div class="note script" style="margin-bottom:6px"><b>Text OK?</b> Ask if appointment confirmations by text are ok. Mention the confirmation text will ask for a photo of the model number tag.</div>
@@ -201,10 +204,9 @@ body.online .hchip{display:inline-block}
 
 <div id="login" hidden><form id="loginForm">
   <h2>City Appliance call intake</h2>
-  <div style="font-size:13px;color:#4b5563">Sign in with your Call Desk email and password.</div>
+  <div style="font-size:13px;color:#4b5563">Enter your Call Desk email. We'll send you a link, no password needed.</div>
   <label>Email<input type="email" id="lgEmail" autocomplete="username" required></label>
-  <label>Password<input type="password" id="lgPass" autocomplete="current-password" required></label>
-  <button type="submit">Sign in</button>
+  <button type="submit" id="lgSubmit">Email me a sign-in link</button>
   <div id="loginMsg" role="status"></div>
   <div class="alt"><a href="#" id="offlineLink">Continue without signing in</a> (copy-note only)</div>
 </form></div>
@@ -226,7 +228,10 @@ const FEES = {
     "Other":{fee:null,note:"Get the ZIP to look up the fee. If no fee comes up, save their info and tell them the scheduling team will call back to complete the booking."}
   },
   premiumBrands:["Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram"],
-  premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85
+  premiumFee:50, builtInFridgeFee:50, additionalApplianceFee:85,
+  // Business calls: $200 in the standard $125 area. Farther cities add the same
+  // amount they add for a home (Driftwood +$20, Canyon Lake +$40).
+  standardFee:125, commercialFee:200, commercialAdditionalApplianceFee:125
 };
 const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
@@ -491,8 +496,44 @@ const PAY_fee=Q("Did you confirm the diagnostic fee with the customer?",["Yes","
 const PAY_slot=Q("Slot the customer was told",["AM","PM"],{req:1});
 const PAY_text=Q("OK to send appointment confirmations by text?",["Yes","No"],{req:1,
   notes:{"Yes":{t:"Tell them the confirmation text will ask for a photo of the model number tag, sent back by text.",k:"script"}}});
-const CUST_QS=[CU_ret,CU_city];
-const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,PAY_fee,PAY_slot,PAY_text];
+// Defined last so earlier question ids (and any call in progress) stay the same.
+const CU_type=Q("Home or business?",["Home","Business"],{req:1,
+  notes:{"Business":{t:"COMMERCIAL: the diagnostic fee is $"+FEES.commercialFee+" ($"+FEES.commercialAdditionalApplianceFee+" each additional appliance), more for farther cities the same as residential. No premium-brand or built-in charges. Commercial jobs take a 2-hour block and count as 2 points on the schedule (3 with two appliances), so pick a day with room.",k:"warn"}}});
+const isCommercial=()=>S.g[CU_type.id]==="Business";
+// Business calls type the brand in (commercial brands aren't in the residential list).
+const SH_brandTyped=Q("Brand of appliance (type it in)",null,{req:1,note:"Type the brand exactly as it appears on the unit."});
+function sharedQs(){ return isCommercial() ? SHARED.filter(q=>q!==SH_brandOther).map(q=>q===SH_brand?SH_brandTyped:q) : SHARED; }
+function brandOf(u){
+  if(isCommercial()) return String(u.ans[SH_brandTyped.id]||"").trim();
+  return String((u.ans[SH_brand.id]==="Other"?u.ans[SH_brandOther.id]:u.ans[SH_brand.id])||"").trim();
+}
+/* ---------- Business calls: billing, on-site contact and the business's own process ----------
+   These replace the homeowner / landlord / tenant questions when "Business" is picked. */
+const forBiz={onlyIf:()=>isCommercial()};
+const COM_name=Q("Business name",null,Object.assign({req:1,note:"Saved as the company name on the customer in HCP."},forBiz));
+const COM_onsite=Q("Who will meet the tech on site? (name and phone)",null,Object.assign({req:1,
+  note:'"Who should our technician ask for when he arrives, and what\'s the best number to reach them that day?"'},forBiz));
+const COM_hours=Q("Business hours, or when the tech can arrive",null,Object.assign({note:"Restaurants often can't have a tech in the kitchen during a rush. Note any times to avoid."},forBiz));
+const COM_payer=Q("Who approves repairs and pays the bill?",["The person on site","A manager or owner off site","Corporate / facilities office"],Object.assign({req:1,
+  note:'"Who signs off on repair costs and handles the invoice? Is that you, or someone else at the company?"'},forBiz));
+const COM_payerInfo=Q("Approver's name, phone and email",null,{req:1,onlyIf:forBiz.onlyIf,showIf:[COM_payer.id,["A manager or owner off site","Corporate / facilities office"]],
+  note:"We contact them to approve any repair cost before the work is done, and the invoice goes to them."});
+const COM_po=Q("Work order or PO number (if they gave one)",null,Object.assign({note:"Many companies won't pay an invoice without their work order or PO number on it."},forBiz));
+const COM_limit=Q("Pre-approved repair limit (exact $ or \"Diagnostic Only\")",null,Object.assign({
+  note:'"If our tech has the part on the truck he can often fix it on the spot. Is there an amount he can go ahead with without calling for approval?"'},forBiz));
+const COM_process=Q("Does this business have its own service process?",["Yes","No","Not sure"],Object.assign({req:1,
+  note:'Ask: "Is there anything your company needs from our technician on site, like check-in photos, before and after photos, a work order number, or a report sent to someone?"',
+  notes:{"Not sure":{t:"Ask who would know, and note their name and number below so the office can confirm before the visit.",k:"warn"}}},forBiz));
+const COM_steps=Q("What does their process require?",null,{req:1,min:10,onlyIf:forBiz.onlyIf,showIf:[COM_process.id,["Yes","Not sure"]],
+  note:"For example: photo of the front door or storefront on arrival, before and after photos of the repair, photo of the failed part, check in and out with a named person."});
+const COM_report=Q("Where do the photos and report go, and who do we update?",null,{req:1,min:6,onlyIf:forBiz.onlyIf,showIf:[COM_process.id,["Yes","Not sure"]],
+  note:"The email address or text number, and the person on their team the tech or office should keep updated."});
+// The residential payment questions don't apply to a business.
+[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo].forEach(q=>{ q.onlyIf=()=>!isCommercial(); });
+const CUST_QS=[CU_ret,CU_type,CU_city];
+const PAY_QS=[PAY_who,PAY_onsite,PAY_tenant,PAY_tenantInfo,PAY_preauth,PAY_llinfo,
+  COM_name,COM_onsite,COM_hours,COM_payer,COM_payerInfo,COM_po,COM_limit,COM_process,COM_steps,COM_report,
+  PAY_fee,PAY_slot,PAY_text];
 
 const FAQS=[
 ["What does the service call fee cover?","It covers a complete diagnosis of the appliance issue and an estimate for the repair. The fee is waived if the customer approves a repair estimate."],
@@ -524,13 +565,13 @@ function textProblem(q,v){
   if(q.check) return q.check(v);
   return "";
 }
-function visible(q,ans){ if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
+function visible(q,ans){ if(q.onlyIf&&!q.onlyIf()) return false; if(!q.showIf) return true; const [dep,vals]=q.showIf; return vals.includes(ans[dep]); }
 function appOf(u){ const list = u.svc==="Install"?INSTALL_APPLIANCES:DIAG_APPLIANCES; return list.find(a=>a.name===u.app)||null; }
 function unitQuestions(u){
   const out=[]; const app=appOf(u);
   if(app) app.qs.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
   if(u.svc==="Warranty") WARRANTY_QS.forEach(q=>{ if(!q.info && visible(q,u.ans)) out.push(q); });
-  if((u.svc==="Diagnosis"||u.svc==="Warranty") && app) SHARED.forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
+  if((u.svc==="Diagnosis"||u.svc==="Warranty") && app) sharedQs().forEach(q=>{ if(visible(q,u.ans)) out.push(q); });
   return out;
 }
 function globalQuestions(){
@@ -576,7 +617,7 @@ function render(){
     const app=appOf(u);
     if(app){
       h+='<div class="sec"><h2>'+esc(u.svc||"")+' — '+esc(app.name)+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+app.qs.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
-      if(u.svc==="Diagnosis"||u.svc==="Warranty") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+SHARED.filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") h+='<div class="sec"><h2>Details for the tech'+(S.units.length>1?' (appliance '+(i+1)+')':'')+'</h2><div class="sbody">'+sharedQs().filter(q=>visible(q,u.ans)).map(q=>renderQ(q,si,si)).join('')+'</div></div>';
     }
   });
   h+='<div class="sec"><div class="sbody"><button class="opt" id="addUnit" style="border-style:dashed;font-weight:700">+ Add another appliance</button></div></div>';
@@ -590,18 +631,22 @@ function renderFaqs(){
 
 function feeParts(){
   const city=S.g[CU_city.id]; const parts=[];
-  const base = city && FEES.cities[city] ? FEES.cities[city].fee : null;
+  const cityFee = city && FEES.cities[city] ? FEES.cities[city].fee : null;
+  // Business calls: commercial fee plus the same distance add-on a home pays
+  // (city fee minus the standard fee). An "Other" city still needs the ZIP lookup.
+  const base = isCommercial() && cityFee!=null ? FEES.commercialFee+Math.max(0,cityFee-FEES.standardFee) : cityFee;
   const full=S.units.filter(u=>chargeOf(u)==="full");
   S.units.forEach(u=>{ if(u.svc==="Warranty"&&chargeOf(u)==="covered") parts.push("$0 "+(warrantyCo(u)||"warranty")+" covered"); });
   let armis=0; S.units.forEach(u=>{ const a=armisCollect(u); if(a!=null){ armis+=a; parts.push("+$"+a+" Armis fee collected on site"); } });
   if(!full.length) return {total:S.units.some(u=>u.svc==="Warranty")?armis:null,parts};
   let total=base;
-  if(base!=null) parts.push("$"+base+" "+city); else if(city==="Other") parts.push("ZIP lookup needed");
-  const anyPremium=full.some(u=>{ const b=u.ans[SH_brand.id]; return b && FEES.premiumBrands.some(p=>b.includes(p)); });
+  if(base!=null) parts.push("$"+base+" "+(isCommercial()?"commercial, ":"")+city); else if(city==="Other") parts.push("ZIP lookup needed");
+  // No premium rates on business calls: no premium-brand or built-in add-on.
+  const anyPremium=!isCommercial() && full.some(u=>{ const b=brandOf(u).toLowerCase(); return b && FEES.premiumBrands.some(p=>b.includes(p.toLowerCase())); });
   if(anyPremium){ if(total!=null) total+=FEES.premiumFee; parts.push("+$"+FEES.premiumFee+" premium brand"); }
-  const anyBuiltIn=full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
+  const anyBuiltIn=!isCommercial() && full.some(u=>{ if(u.app!=="Refrigerator"||u.svc==="Install") return false; const app=appOf(u); return app && u.ans[app.qs[0].id]==="Built In"; });
   if(anyBuiltIn){ if(total!=null) total+=FEES.builtInFridgeFee; parts.push("+$"+FEES.builtInFridgeFee+" built-in"); }
-  if(full.length>1){ const extra=(full.length-1)*FEES.additionalApplianceFee; if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
+  if(full.length>1){ const extra=(full.length-1)*(isCommercial()?FEES.commercialAdditionalApplianceFee:FEES.additionalApplianceFee); if(total!=null) total+=extra; parts.push("+$"+extra+" additional appliance"+(full.length>2?"s":"")); }
   if(armis && total!=null) total+=armis;
   return {total,parts};
 }
@@ -650,7 +695,7 @@ function updateChecklist(){
     ["CSR picked",!!S.csr],
     ["Service type + appliance"+(S.units.length>1?" (all)":""),S.units.every(u=>u.svc&&u.app)],
     ["Main issue + follow-ups"+(S.units.length>1?" (all)":""),S.units.every(mainDone)],
-    ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!u.ans[SH_brand.id])],
+    ["Brand / model asked",S.units.every(u=>u.svc==="Install"||!!brandOf(u))],
     ...(S.units.some(u=>u.svc==="Warranty")?[["Warranty company + details",S.units.filter(u=>u.svc==="Warranty").every(u=>WARRANTY_QS.filter(q=>!q.info&&visible(q,u.ans)).every(q=>q.type==="text"?!textProblem(q,u.ans[q.id]):!!u.ans[q.id]))]]:[]),
     ["City + fee confirmed",!!(S.g[CU_city.id]&&S.g[PAY_fee.id]==="Yes")],
     ["Who's paying settled",payDone()],
@@ -680,7 +725,14 @@ function collectFlags(){
     if(q.notes && v && q.notes[v] && q.notes[v].flag) flags.push(q.notes[v].flag); }); }
   S.units.forEach(u=>scan(unitQuestions(u),u.ans));
   scan(globalQuestions(),S.g);
-  return [...new Set(flags)];
+  // A business with its own process: put what it requires at the very top of the note for the tech.
+  if(isCommercial()&&["Yes","Not sure"].includes(S.g[COM_process.id])){
+    const st=String(S.g[COM_steps.id]||"").trim(), to=String(S.g[COM_report.id]||"").trim();
+    flags.push("BUSINESS PROCESS"+(S.g[COM_process.id]==="Not sure"?" (TO CONFIRM)":"")+": "+(st||"see notes")+(to?" | Send to / update: "+to:""));
+  }
+  if(isCommercial()&&String(S.g[COM_po.id]||"").trim()) flags.push("WORK ORDER / PO: "+String(S.g[COM_po.id]).trim()+" (put it on the invoice)");
+  // Business calls carry no premium charges, so keep the built-in flag but drop the fee from it.
+  return [...new Set(flags.map(f=>isCommercial()?f.replace(/ — premium fee \+\$\d+$/,""):f))];
 }
 
 /* ---------- Note builder ---------- */
@@ -696,7 +748,7 @@ function buildNote(incomplete){
     if(app){
       app.qs.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
       if(u.svc==="Warranty"){ L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?"  |  Work order: "+u.ans[W_sr.id].trim().toUpperCase():"")+(visible(W_armisSrc,u.ans)&&u.ans[W_armisSrc.id]?"  |  "+u.ans[W_armisSrc.id]:"")+(visible(W_armisFee,u.ans)&&u.ans[W_armisFee.id]?"  |  Armis fee: "+u.ans[W_armisFee.id]+(armisCollect(u)!=null?" ($"+armisCollect(u)+")":""):"")+(visible(W_sup,u.ans)&&u.ans[W_sup.id]?"  |  Supervisor confirmed: "+u.ans[W_sup.id]:"")+(visible(W_area,u.ans)&&u.ans[W_area.id]?"  |  "+u.ans[W_area.id]:"")); if(!String(u.ans[SH_model.id]||"").trim()) L.push("Model/serial: NOT YET. Customer asked to text model tag photo; tech to collect on site if needed."); }
-      if(u.svc==="Diagnosis"||u.svc==="Warranty") SHARED.filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
+      if(u.svc==="Diagnosis"||u.svc==="Warranty") sharedQs().filter(q=>visible(q,u.ans)).forEach(q=>{ const v=u.ans[q.id]; if(String(v||"").trim()) L.push(shortQ(q.q)+": "+v); });
     }
     L.push("");
   });
@@ -779,6 +831,19 @@ async function call(action,payload){
   return j;
 }
 
+// Same as call(), for any other signed-in Edge Function (used by the schedule panel).
+async function callFn(fn,body){
+  const {data:{session:s}}=await SB.auth.getSession(); if(s) session=s;
+  if(!session) throw new Error("Not signed in.");
+  const r=await fetch(CFG.supabaseUrl+"/functions/v1/"+fn,{method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token,"apikey":CFG.supabaseAnonKey},
+    body:JSON.stringify(body||{})});
+  let j=null; try{ j=await r.json(); }catch(e){}
+  if(r.status===401) throw new Error("Your sign-in expired. Reload the page and sign in again.");
+  if(!r.ok) throw new Error((j&&j.error)||("Error "+r.status));
+  return j;
+}
+
 /* ---------- login ---------- */
 function showLogin(show){ $("login").hidden=!show; if(show) setTimeout(()=>$("lgEmail").focus(),50); }
 async function startSignedIn(){
@@ -790,9 +855,9 @@ async function startSignedIn(){
   try{ const h=await call("health"); hcpOk=!!h.ok; $("hcpChip").textContent=hcpOk?"HCP connected":"HCP not connected"; $("hcpChip").className="hchip "+(hcpOk?"ok":"bad");
        $("hcpChip").title=hcpOk?(h.company||""):("Key set: "+h.key_set+", HCP status: "+h.hcp_status); }
   catch(e){ hcpOk=false; $("hcpChip").textContent="HCP not connected"; $("hcpChip").className="hchip bad"; $("hcpChip").title=e.message; }
-  renderLookup(); syncButtons();
+  renderLookup(); syncButtons(); if(window.Sched) Sched.sync();
 }
-function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); }
+function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); if(window.Sched) Sched.sync(); }
 
 /* ---------- lookup panel ---------- */
 function renderLookup(){
@@ -884,7 +949,7 @@ function cleanLabel(q){
 }
 function unitLine(u){
   const app=appOf(u); const L=[];
-  const brand=u.ans[SH_brand.id]==="Other"?(u.ans[SH_brandOther.id]||""):u.ans[SH_brand.id];
+  const brand=brandOf(u);
   const model=String(u.ans[SH_model.id]||"").trim();
   const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
   L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord+(model?" (model "+model+")":""));
@@ -919,7 +984,7 @@ function buildLineItems(diagSvc){
   S.units.forEach(u=>items.push(unitLine(u)));
   if(S.units.some(u=>chargeOf(u)==="full")||diagCents>0){
     const d={name:allInstall?"Service call":"Diagnostic Fee",unit_price:diagCents,quantity:1,kind:"labor",taxable:true,
-      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":"Diagnosis and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
+      description:allInstall?"Service call"+(city&&city!=="Other"?", "+city:"")+".":(isCommercial()?"Commercial diagnosis":"Diagnosis")+" and repair estimate"+(city&&city!=="Other"?", "+city:"")+". Goes toward the repair when you move forward."};
     if(diagSvc&&!allInstall){ d.name=diagSvc.name; d.service_item_id=diagSvc.uuid; d.service_item_type="organizational"; }
     items.push(d);
   }
@@ -939,6 +1004,7 @@ function buildTags(){
   const t=new Set(["Intake tool"]);
   S.units.forEach(u=>{ if(u.app) t.add(u.app); if(u.svc) t.add(u.svc); if(u.svc==="Warranty"){ const c=u.ans[W_co.id]; if(c) t.add(c==="Armis (home warranty)"?"Armis":c==="Other"?"Warranty - other":c); } });
   if(S.units.some(u=>u.ans[SH_workedOn.id]==="Yes — City Appliance")) t.add("Possible callback");
+  if(isCommercial()) t.add("Commercial");   // the schedule panel counts Commercial-tagged jobs as 2 points
   return [...t];
 }
 
@@ -963,6 +1029,7 @@ async function ensureCustomer(){
   }
   const cust={first_name:(c.first||"").trim()||null,last_name:(c.last||"").trim()||null,email:(c.email||"").trim()||null,
     mobile_number:digits(c.phone)||null,notifications_enabled:S.g[PAY_text.id]!=="No",addresses:[addr]};
+  if(isCommercial()&&String(S.g[COM_name.id]||"").trim()) cust.company=String(S.g[COM_name.id]).trim();
   const r=await call("customer_create",{customer:cust});
   h.cid=r.id; h.cust=r; h.addrId=(r.addresses&&r.addresses[0]&&r.addresses[0].id)||null;
   if(!h.addrId){ const a=await call("address_create",{customer_id:r.id,address:addr}); h.addrId=a.id; }
@@ -1065,19 +1132,25 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ c
   renderLookup(); syncButtons();
   if(!SB){ goOffline(); return; }
   $("loginForm").addEventListener("submit",async e=>{
-    e.preventDefault(); const m=$("loginMsg"); m.textContent="Signing in…";
-    const {data,error}=await SB.auth.signInWithPassword({email:$("lgEmail").value.trim(),password:$("lgPass").value});
-    if(error){ m.textContent=error.message==="Invalid login credentials"?"Wrong email or password.":error.message; return; }
-    m.textContent=""; session=data.session; startSignedIn();
+    e.preventDefault(); const m=$("loginMsg"); const btn=$("lgSubmit"); const email=$("lgEmail").value.trim();
+    m.className=""; m.textContent="Sending…"; btn.disabled=true;
+    const {error}=await SB.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:window.location.href}});
+    btn.disabled=false;
+    if(error){ m.className=""; m.textContent=error.message; return; }
+    m.className="ok"; m.textContent="Check your email for a sign-in link. It opens right back up here.";
   });
   $("signOut").addEventListener("click",async()=>{ await SB.auth.signOut(); location.reload(); });
   SB.auth.onAuthStateChange((ev,s)=>{ if(s) session=s; });
   const {data:{session:s}}=await SB.auth.getSession();
   if(s){ session=s; startSignedIn(); } else showLogin(true);
 })();
-window.__P2={call,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
+window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
 })();
 </script>
+<script src="schedule-settings.js?v=20261113c"></script>
+<script src="points.js?v=20261113c"></script>
+<script src="route.js?v=20261113c"></script>
+<script src="schedule.js?v=20261113c"></script>
 
 </body>
 </html>
