@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Appliance — Parts Desk</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
+  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
+  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
+  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
+  color-scheme:dark } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:700}
+h1{font-size:18px} h2{font-size:16px} h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:13px} .muted{color:var(--muted)} .num{text-align:right;font-variant-numeric:tabular-nums}
+.grow{flex:1}
+.top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.top .who{font-size:12px;opacity:.9}
+.wrap{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
+button,.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent-text)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.small{padding:4px 9px;font-size:13px}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.top button{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+.top button.primary{background:#fff;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+.top input{max-width:320px;background:#fff;color:#171a1e;border-color:transparent}
+.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin:4px 0 14px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:9px 12px}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--accent-text)}
+.tabs .n{font-size:12px;padding:0 6px;border-radius:99px;background:var(--sunk);color:var(--ink);font-variant-numeric:tabular-nums}
+.tabs .n.hot{background:var(--warn-bg);color:var(--warn)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px 12px;background:var(--sunk);white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--sunk)}
+td.act{white-space:nowrap;text-align:right}
+td.act select{width:150px;display:inline-block}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.info{background:var(--info-bg);color:var(--info)}
+.empty{padding:22px;color:var(--muted);text-align:center}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:9px 11px;margin:10px 0}
+.notice.bad{background:var(--bad-bg);color:var(--bad)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld>span{font-size:12px;color:var(--muted);font-weight:600}
+.fld.wide{grid-column:1/-1}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:0;width:min(720px,94vw);max-height:90vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+.dbody{padding:16px;display:flex;flex-direction:column;gap:14px}
+.dfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.hits{display:flex;flex-direction:column;gap:6px}
+.hit{text-align:left;white-space:normal;font-weight:400}
+.hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
+#toast.bad{background:var(--bad);color:#fff}
+#print{display:none}
+@media print{
+  @page{size:2.25in 1.25in;margin:0}
+  body{background:#fff} body>*:not(#print){display:none!important}
+  #print{display:block}
+  .label{width:2.25in;height:1.25in;padding:.06in .08in;color:#000;font:8pt/1.15 Arial,Helvetica,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+  .label .l1{display:flex;justify-content:space-between;font-weight:700;font-size:10pt}
+  .label .l2{font-family:Menlo,Consolas,monospace;font-size:9pt;font-weight:700}
+  .label svg{width:100%;height:.36in;margin:.02in 0}
+  .label .l4{font-size:7pt}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg"></dialog>
+<div id="print"></div>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Parts desk v1. Tables: parts, vendors, part_events (see supabase/migrations/*parts_desk_v1.sql).
+   Office (csr, admin) manage orders; techs request parts and mark them installed or not used.
+   The database enforces those rules; this page only hides what a role cannot do. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>n==null||n===''?'':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>new Date().toLocaleDateString('en-CA');
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toLocaleDateString('en-CA')};
+const fmtDate=iso=>iso?new Date(String(iso).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5);
+const lastName=n=>String(n||'').trim().split(/\s+/).pop().replace(/[^A-Za-z0-9]/g,'');
+
+const TABS=[['need','Need to order',['need_to_order']],['ordered','On order',['ordered','backordered']],['shipped','Shipped',['shipped']],
+  ['received','Received',['received']],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled']]];
+const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backordered, no ETA',shipped:'Shipped',received:'Received',installed:'Installed',returned:'Not used, awaiting credit',credited:'Credit received',cancelled:'Cancelled'};
+const TONE={need_to_order:'warn',ordered:'info',backordered:'bad',shipped:'info',received:'good',returned:'warn'};
+const S={session:null,me:null,parts:[],vendors:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const part=id=>S.parts.find(p=>p.id===id);
+const isOther=v=>!!v&&/^other$/i.test(v.name);
+const vname=p=>p.vendors?(isOther(p.vendors)&&p.vendor_other?p.vendor_other:p.vendors.name):'';
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4200)}
+
+/* ---------- data ---------- */
+async function whoami(){
+  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+}
+async function load(){
+  S.loading=true;render();
+  const [p,v]=await Promise.all([
+    SB.from('parts').select('*, vendors(name,return_days)').order('created_at',{ascending:false}).limit(1000),
+    SB.from('vendors').select('*').order('name')]);
+  S.loading=false;
+  if(p.error||v.error)S.err=(p.error||v.error).message;else{S.err='';S.parts=p.data||[];S.vendors=(v.data||[]).sort((a,b)=>isOther(a)-isOther(b)||a.name.localeCompare(b.name))}
+  render();if(S.dlg)renderDlg();
+}
+async function upd(id,patch,msg){
+  const {error}=await SB.from('parts').update(patch).eq('id',id);
+  if(error){toast(error.message,true);return false}
+  if(msg)toast(msg);await load();return true;
+}
+/* Housecall Pro, read-only: the same function the intake tool uses. Office roles only. */
+async function hcp(action,payload){
+  const r=await fetch(CFG.supabaseUrl+'/functions/v1/hcp',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},
+    body:JSON.stringify({action,payload:payload||{}})});
+  let j=null;try{j=await r.json()}catch(e){}
+  if(r.status===401)throw new Error('Your sign-in expired. Reload the page and sign in again.');
+  if(!r.ok)throw new Error((j&&j.error)||('Error '+r.status));
+  return j;
+}
+
+/* ---------- views ---------- */
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance Parts Desk</h2>
+  <p class="muted">Sign in with the same email and password you use for Call Desk.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given access to the Parts desk yet. Ask Jake to set your role.</p>
+  <button data-a="signout">Sign out</button></div>`}
+
+function flags(p){
+  const f=[];
+  if(['ordered','shipped'].includes(p.status)&&p.eta&&daysUntil(p.eta)<0)f.push(pill('Past due','bad'));
+  if(p.status==='received'&&p.return_by){const d=daysUntil(p.return_by);f.push(pill(d<0?'Return window passed':'Return by '+fmtDate(p.return_by),d<0?'bad':d<=7?'warn':''))}
+  if(p.status==='need_to_order'){const d=Math.floor((Date.now()-new Date(p.created_at))/864e5);if(d>=1)f.push(pill(`Waiting ${d} day${d===1?'':'s'}`,d>=2?'bad':'warn'))}
+  if(p.status==='returned'&&p.returned_on){const d=-daysUntil(p.returned_on);if(d>=14)f.push(pill(`No credit after ${d} days`,'bad'))}
+  if(p.status==='installed'&&p.warranty_until)f.push(pill('Parts warranty to '+fmtDate(p.warranty_until),''));
+  return f.join(' ');
+}
+function rowActions(p){
+  const o=office();
+  if(p.status==='need_to_order'){if(!o)return'';const pk=S.pick[p.id]||{},ov=S.vendors.find(isOther);
+    return `<select data-pick="vendor" data-id="${p.id}" aria-label="Vendor"><option value="">Vendor…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${pk.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${ov&&pk.vendor===ov.id?` <input data-pick="other" data-id="${p.id}" value="${esc(pk.other)}" placeholder="Vendor name" aria-label="Other vendor name" style="width:130px;display:inline-block">`:''} <input class="mono" data-pick="order" data-id="${p.id}" value="${esc(pk.order)}" placeholder="Order no." aria-label="Vendor order number" style="width:118px;display:inline-block"> <button class="primary small" data-a="order" data-id="${p.id}">Mark ordered</button>`}
+  if(p.status==='ordered'||p.status==='backordered')return o?`<button class="small" data-a="backorder" data-id="${p.id}">${p.status==='backordered'?'Has an ETA now':'Backordered'}</button> <button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
+  if(p.status==='shipped')return o?`<button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
+  if(p.status==='received')return `<button class="primary small" data-a="installed" data-id="${p.id}">Installed</button> <button class="small" data-a="notused" data-id="${p.id}">Not used</button>`;
+  if(p.status==='returned')return o?`<button class="primary small" data-a="credit" data-id="${p.id}">Credit received</button>`:'';
+  return '';
+}
+function vMain(){
+  const q=S.q.trim().toLowerCase();
+  const match=p=>!q||[p.tag,p.job_number,p.customer_name,p.part_number,p.description,p.po_number,p.vendor_order_no,p.tracking_number,vname(p)].join(' ').toLowerCase().includes(q);
+  const cur=TABS.find(t=>t[0]===S.tab),rows=S.parts.filter(p=>cur[2].includes(p.status)&&match(p));
+  return `<header class="top"><h1>Parts Desk</h1>
+   <input id="q" type="search" placeholder="Search tag, job, customer, part or PO" value="${esc(S.q)}" aria-label="Search parts">
+   <span class="grow"></span>
+   <button class="primary" data-a="request">+ Request a part</button>
+   ${office()?'<button data-a="vendors">Vendors</button>':''}
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice bad">Could not load parts: ${esc(S.err)}</div>`:''}
+   <div class="tabs">${TABS.map(([k,l,st])=>{const n=S.parts.filter(p=>st.includes(p.status)).length;
+     return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['need','returns'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>Job</th><th>Vendor and PO</th><th>Where it stands</th><th></th></tr></thead><tbody>
+    ${rows.map(p=>`<tr data-a="open" data-id="${p.id}">
+      <td class="mono">${esc(p.tag)}</td>
+      <td><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''}<br><span class="muted">${esc(p.description)}</span></td>
+      <td>#${esc(p.job_number)}<br><span class="muted">${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}</span></td>
+      <td>${p.vendors?esc(vname(p)):'<span class="muted">Not ordered</span>'}${p.po_number?`<br><span class="mono muted">PO ${esc(p.po_number)}</span>`:''}${p.vendor_order_no?`<br><span class="mono muted">Order ${esc(p.vendor_order_no)}</span>`:''}${p.tracking_number?`<br><span class="mono muted">${esc(p.tracking_number)}</span>`:''}</td>
+      <td>${pill(LABEL[p.status],TONE[p.status])} ${flags(p)}${p.eta&&['ordered','shipped'].includes(p.status)?`<br><span class="muted">ETA ${fmtDate(p.eta)}</span>`:''}${p.requested_by_name?`<br><span class="muted">Requested by ${esc(p.requested_by_name)}</span>`:''}</td>
+      <td class="act">${rowActions(p)}</td></tr>`).join('')}</tbody></table></div>`
+     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':'Nothing in this queue.'}</div>`}</div>
+  </div>`}
+
+/* ---------- dialogs ---------- */
+function dPart(p){
+  const o=office(),ro=o?'':'disabled';
+  const f=(label,k,cls,attrs)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="pf-${k}" value="${esc(p[k])}" ${attrs||''} ${ro}></label>`;
+  return `<div class="dhead"><h2 class="mono">${esc(p.tag)}</h2>${pill(LABEL[p.status],TONE[p.status])}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div><b>#${esc(p.job_number)}</b> ${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}<br><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''} ${flags(p)}</div>
+   <div class="fields">${f('Description','description','wide')}${f('Quantity','qty','','type="number" min="1"')}
+    <label class="fld"><span>Vendor</span><select id="pf-vendor_id" ${ro}><option value="">Not chosen</option>${S.vendors.map(v=>`<option value="${v.id}" ${p.vendor_id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
+    ${f('Vendor name, if Other','vendor_other')}${f('PO number','po_number','','class="mono"')}${f('Vendor order number','vendor_order_no','','class="mono"')}${f('Tracking number','tracking_number','','class="mono"')}
+    ${f('Expected arrival','eta','','type="date"')}${f('List price','list_price','','type="number" step="0.01" min="0"')}${f('Our cost','cost','','type="number" step="0.01" min="0"')}${f('Sell price','sell_price','','type="number" step="0.01" min="0"')}
+    ${f('Shelf or bin','bin')}
+    <label class="fld wide"><span>Notes</span><textarea id="pf-notes">${esc(p.notes)}</textarea></label></div>
+   <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
+  </div>
+  <div class="dfoot">${o&&!['cancelled','credited','installed'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
+   <button data-a="print" data-id="${p.id}">Print tag</button><button class="primary" data-a="save" data-id="${p.id}">Save</button></div>`}
+function dRequest(){
+  const r=S.req,o=office();
+  const f=(label,k,cls,attrs)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="rq-${k}" data-req="${k}" value="${esc(r[k])}" ${attrs||''}></label>`;
+  return `<div class="dhead"><h2>Request a part</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   ${o?`<div><h3>Find the job in Housecall Pro</h3><div class="row" style="margin-top:6px"><input id="rq-hq" data-req="hq" value="${esc(r.hq)}" placeholder="Customer name or phone" style="flex:1" aria-label="Customer search"><button data-a="hsearch">${r.busy?'Searching…':'Search'}</button></div>
+     ${r.msg?`<div class="notice">${esc(r.msg)}</div>`:''}
+     ${r.jobs?`<div class="hits" style="margin-top:8px"><span class="muted">Jobs for ${esc(r.custName)}. Pick one:</span>${r.jobs.length?r.jobs.map((j,i)=>`<button class="hit" data-a="hjob" data-i="${i}"><b>#${esc(j.invoice_number||'')}</b> · ${esc(j.work_status||'')} · ${esc(((j.schedule&&j.schedule.scheduled_start)||j.created_at||'').slice(0,10))}${j.description?`<br><span class="muted">${esc(String(j.description).slice(0,120))}</span>`:''}</button>`).join(''):'<span class="muted">No jobs on file for this customer.</span>'}</div>`
+      :r.custs?`<div class="hits" style="margin-top:8px">${r.custs.length?r.custs.map((c,i)=>`<button class="hit" data-a="hcust" data-i="${i}"><b>${esc([c.first_name,c.last_name].filter(Boolean).join(' ')||c.company||'(no name)')}</b> <span class="muted">${esc([c.mobile_number,c.home_number,c.email].filter(Boolean).join(' · '))}</span></button>`).join(''):'<span class="muted">No customers found.</span>'}</div>`:''}</div>`:''}
+   <div class="fields">${f('Job number *','job_number','','class="mono"')}${f('Customer name','customer_name')}${f('Appliance','appliance','','placeholder="e.g. Whirlpool dryer"')}
+    ${f('Part number *','part_number','','class="mono"')}${f('What is it','description','','placeholder="e.g. heating element"')}${f('Quantity','qty','','type="number" min="1"')}
+    <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes">${esc(r.notes)}</textarea></label></div>
+   ${o?`<label class="row"><input type="checkbox" id="rq-ordered" data-reqcheck="1" ${r.ordered?'checked':''} style="width:auto"><span>This part has already been ordered</span></label>
+    ${r.ordered?`<div class="fields"><label class="fld"><span>Vendor *</span><select id="rq-vendor" data-req="vendor"><option value="">Choose…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${r.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
+     ${isOther(S.vendors.find(v=>v.id===r.vendor))?f('Vendor name *','other'):''}${f('Order number','order','','class="mono"')}${f('Tracking number','tracking','','class="mono"')}${f('Expected arrival','eta','','type="date"')}</div>
+     <p class="muted">It will go straight to On order, or to Shipped if you add a tracking number.</p>`:''}`:''}
+  </div>
+  <div class="dfoot"><button data-a="close">Cancel</button><button class="primary" data-a="submit">${o&&r.ordered?'Add part':'Send request'}</button></div>`}
+function dVendors(){
+  return `<div class="dhead"><h2>Vendors</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody"><p class="muted">Return days is how long a vendor gives you to send back an unused part. It sets the "return by" date when a part is received.</p>
+   <div class="scroll"><table><thead><tr><th>Vendor</th><th>Return days</th><th>How returns and warranty work</th></tr></thead><tbody>
+   ${S.vendors.map(v=>`<tr style="cursor:default"><td>${esc(v.name)}</td><td style="width:110px"><input type="number" min="0" data-vendor="${v.id}" data-k="return_days" value="${esc(v.return_days)}" aria-label="${esc(v.name)} return days"></td>
+     <td><input data-vendor="${v.id}" data-k="return_notes" value="${esc(v.return_notes)}" aria-label="${esc(v.name)} return notes"></td></tr>`).join('')}</tbody></table></div>
+   <div class="row"><input id="vn-new" placeholder="New vendor name" style="flex:1" aria-label="New vendor name"><button data-a="vadd">Add vendor</button></div></div>`}
+function renderDlg(){
+  const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
+  const p=S.dlg.type==='part'?part(S.dlg.id):null;
+  if(S.dlg.type==='part'&&!p){S.dlg=null;if(d.open)d.close();return}
+  d.innerHTML=S.dlg.type==='part'?dPart(p):S.dlg.type==='request'?dRequest():dVendors();
+  if(!d.open)d.showModal();
+}
+function closeDlg(){S.dlg=null;S.req=null;const d=$('dlg');if(d.open)d.close()}
+async function openPart(id){
+  S.dlg={type:'part',id};S.events=[];renderDlg();
+  const {data}=await SB.from('part_events').select('*').eq('part_id',id).order('at');
+  if(S.dlg&&S.dlg.id===id){S.events=data||[];renderDlg()}
+}
+function printTag(p){
+  $('print').innerHTML=`<div class="label"><div class="l1"><span>${esc(p.tag)}</span><span>#${esc(p.job_number)} ${esc(lastName(p.customer_name))}</span></div>
+   <div class="l2">${esc(p.part_number)}${p.qty>1?' x'+p.qty:''}</div><div>${esc(p.description)}</div><svg id="bc"></svg>
+   <div class="l4">${esc(vname(p))}${p.po_number?' · PO '+esc(p.po_number):''}${p.return_by?' · Return by '+fmtDate(p.return_by):''}</div></div>`;
+  try{window.JsBarcode('#bc',p.tag,{format:'CODE128',displayValue:false,margin:0,height:40,width:1.6})}catch(e){}
+  window.print();
+}
+
+/* ---------- actions ---------- */
+const A={
+  tab:d=>{S.tab=d.t;render()},
+  refresh:()=>load(),
+  signout:async()=>{await SB.auth.signOut();location.reload()},
+  open:d=>openPart(d.id),
+  close:()=>closeDlg(),
+  request:()=>{S.req={hq:'',job_number:'',hcp_job_id:null,customer_name:'',appliance:'',part_number:'',description:'',qty:1,notes:'',custs:null,jobs:null,custName:'',busy:false,msg:'',ordered:false,vendor:'',other:'',order:'',tracking:'',eta:''};S.dlg={type:'request'};renderDlg()},
+  vendors:()=>{S.dlg={type:'vendors'};renderDlg()},
+  order:async d=>{const p=part(d.id),pk=S.pick[p.id]||{},v=S.vendors.find(x=>x.id===pk.vendor);if(!v){toast('Pick the vendor first.',true);return}
+    const other=isOther(v)?(pk.other||'').trim():null;if(isOther(v)&&!other){toast('Type the vendor name for Other.',true);return}
+    const name=other||v.name,po=/amazon/i.test(name)?null:`${p.job_number}-${lastName(p.customer_name)}`.replace(/-$/,''),ono=(pk.order||'').trim()||null;
+    if(await upd(p.id,{status:'ordered',vendor_id:v.id,vendor_other:other,vendor_order_no:ono,po_number:po,ordered_on:today()},`Marked ordered from ${name}.`+(po?` PO ${po}.`:'')+(ono?` Order ${ono}.`:'')))delete S.pick[p.id]},
+  backorder:async d=>{const p=part(d.id);await upd(p.id,p.status==='backordered'?{status:'ordered'}:{status:'backordered',eta:null},p.status==='backordered'?'Back to ordered. Add the new ETA on the part.':'Marked backordered with no ETA.')},
+  receive:async d=>{const p=part(d.id),rd=p.vendors&&p.vendors.return_days;
+    if(await upd(p.id,{status:'received',received_on:today(),return_by:rd!=null?addDays(today(),rd):null},`Received ${p.tag}. Print its tag and put it with job #${p.job_number}.`)){S.tab='received';render();openPart(p.id)}},
+  installed:async d=>{const p=part(d.id);await upd(p.id,{status:'installed',installed_on:today()},`${p.tag} installed. Parts warranty runs to ${fmtDate(addDays(today(),365))}.`)},
+  notused:async d=>{const p=part(d.id);await upd(p.id,{status:'returned',returned_on:today()},`${p.tag} marked not used. It stays under Returns until the credit comes back.`)},
+  credit:async d=>{const p=part(d.id);await upd(p.id,{status:'credited',credited_on:today()},`Credit recorded for ${p.tag}.`)},
+  cancel:async d=>{if(!confirm('Cancel this part? It moves to Finished.'))return;if(await upd(d.id,{status:'cancelled'},'Part cancelled.'))closeDlg()},
+  print:d=>printTag(part(d.id)),
+  save:async d=>{const p=part(d.id),v=k=>{const el=$('pf-'+k);return el?el.value.trim():''},n=k=>v(k)===''?null:Number(v(k));
+    const patch=office()?{description:v('description'),qty:Math.max(1,parseInt(v('qty'),10)||1),vendor_id:v('vendor_id')||null,vendor_other:v('vendor_other')||null,po_number:v('po_number')||null,vendor_order_no:v('vendor_order_no')||null,
+      tracking_number:v('tracking_number')||null,eta:v('eta')||null,list_price:n('list_price'),cost:n('cost'),sell_price:n('sell_price'),bin:v('bin')||null,notes:v('notes')||null}:{notes:v('notes')||null};
+    if(office()&&patch.tracking_number&&!p.tracking_number&&['ordered','backordered'].includes(p.status))patch.status='shipped';
+    if(await upd(p.id,patch,patch.status==='shipped'?'Saved. Tracking added, so the part moved to Shipped.':'Saved.'))closeDlg()},
+  hsearch:async()=>{const r=S.req,q=(r.hq||'').trim();if(q.length<2){r.msg='Type at least two letters or digits.';renderDlg();return}
+    r.busy=true;r.msg='';r.jobs=null;renderDlg();
+    try{const res=await hcp('customer_search',{q});r.custs=(res&&res.customers)||[]}catch(e){r.msg='Housecall Pro search failed: '+e.message;r.custs=null}
+    r.busy=false;renderDlg()},
+  hcust:async d=>{const r=S.req,c=r.custs[+d.i];r.custName=[c.first_name,c.last_name].filter(Boolean).join(' ')||c.company||'';r.customer_name=r.custName;r.msg='Loading jobs…';renderDlg();
+    try{const res=await hcp('customer_jobs',{customer_id:c.id});r.jobs=(res&&res.jobs)||[];r.msg=''}catch(e){r.msg='Could not load jobs: '+e.message}
+    renderDlg()},
+  hjob:d=>{const r=S.req,j=r.jobs[+d.i];r.job_number=String(j.invoice_number||'');r.hcp_job_id=j.id||null;if(!r.appliance&&j.description)r.appliance=String(j.description).slice(0,60);r.jobs=null;r.custs=null;r.msg=`Linked to Housecall Pro job #${r.job_number}.`;renderDlg()},
+  submit:async()=>{const r=S.req;if(!r.job_number.trim()||!r.part_number.trim()){toast('Job number and part number are required.',true);return}
+    const row={job_number:r.job_number.trim(),hcp_job_id:r.hcp_job_id,customer_name:r.customer_name.trim(),appliance:r.appliance.trim(),
+      part_number:r.part_number.trim().toUpperCase(),description:r.description.trim(),qty:Math.max(1,parseInt(r.qty,10)||1),notes:r.notes.trim()||null};
+    let tab='need',msg='Request sent. It is under Need to order.';
+    if(office()&&r.ordered){const v=S.vendors.find(x=>x.id===r.vendor);if(!v){toast('Pick the vendor it was ordered from.',true);return}
+      const other=isOther(v)?r.other.trim():null;if(isOther(v)&&!other){toast('Type the vendor name for Other.',true);return}
+      const name=other||v.name,trk=r.tracking.trim()||null;
+      Object.assign(row,{status:trk?'shipped':'ordered',vendor_id:v.id,vendor_other:other,vendor_order_no:r.order.trim()||null,tracking_number:trk,eta:r.eta||null,ordered_on:today(),
+        po_number:/amazon/i.test(name)?null:`${row.job_number}-${lastName(row.customer_name)}`.replace(/-$/,'')});
+      tab=trk?'shipped':'ordered';msg=`Part added as already ordered from ${name}. It is under ${trk?'Shipped':'On order'}.`}
+    const {error}=await SB.from('parts').insert(row);
+    if(error){toast(error.message,true);return}
+    closeDlg();S.tab=tab;toast(msg);load()},
+  vadd:async()=>{const el=$('vn-new'),name=el.value.trim();if(!name)return;const {error}=await SB.from('vendors').insert({name});if(error){toast(error.message,true);return}toast('Vendor added.');await load()}
+};
+
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;
+  if(el.dataset.a==='open'&&e.target.closest('button,select,input,a'))return;
+  A[el.dataset.a](el.dataset)});
+document.addEventListener('input',e=>{const el=e.target;
+  if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
+  if(el.dataset.pick)(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{})[el.dataset.pick]=el.value;
+  if(el.dataset.req&&S.req)S.req[el.dataset.req]=el.value});
+document.addEventListener('change',async e=>{const el=e.target;
+  if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{}).vendor=el.value;render();return}
+  if(el.dataset.reqcheck&&S.req){S.req.ordered=el.checked;renderDlg();return}
+  if(el.dataset.req==='vendor'&&S.req){S.req.vendor=el.value;renderDlg();return}
+  if(el.dataset.vendor){const k=el.dataset.k,val=k==='return_days'?(el.value===''?null:Math.max(0,parseInt(el.value,10)||0)):(el.value.trim()||null);
+    const {error}=await SB.from('vendors').update({[k]:val}).eq('id',el.dataset.vendor);
+    if(error)toast(error.message,true);else{const v=S.vendors.find(x=>x.id===el.dataset.vendor);if(v)v[k]=val;toast('Saved.')}}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='rq-hq'){e.preventDefault();A.hsearch()}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(allowed())load()});
+$('dlg').addEventListener('close',()=>{S.dlg=null;S.req=null});
+window.addEventListener('focus',()=>{if(S.session&&allowed()&&!S.dlg&&!S.loading)load()});
+
+function render(){
+  $('app').innerHTML=!SB?'<div class="card"><h2>Parts Desk</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vWaiting():vMain();
+}
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&allowed())load();
+})();
+</script>
+</body>
+</html>
