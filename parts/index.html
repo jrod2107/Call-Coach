@@ -290,7 +290,10 @@ const A={
   installed:async d=>{const p=part(d.id);await upd(p.id,{status:'installed',installed_on:today()},`${p.tag} installed. Parts warranty runs to ${fmtDate(addDays(today(),365))}.`)},
   notused:async d=>{const p=part(d.id);await upd(p.id,{status:'returned',returned_on:today()},`${p.tag} marked not used. It stays under Returns until the credit comes back.`)},
   credit:async d=>{const p=part(d.id);await upd(p.id,{status:'credited',credited_on:today()},`Credit recorded for ${p.tag}.`)},
-  cancel:async d=>{if(!confirm('Cancel this part? It moves to Finished.'))return;if(await upd(d.id,{status:'cancelled'},'Part cancelled.'))closeDlg()},
+  /* Two clicks instead of a browser confirm() box, which some browsers and embedded views silently block. */
+  cancel:async(d,el)=>{if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Click again to cancel this part';el.style.color='var(--bad)';
+      setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.textContent='Cancel this part';el.style.color=''}},5000);return}
+    if(await upd(d.id,{status:'cancelled'},'Part cancelled. It is under Finished.'))closeDlg()},
   print:d=>printTag(part(d.id)),
   save:async d=>{const p=part(d.id),v=k=>{const el=$('pf-'+k);return el?el.value.trim():''},n=k=>v(k)===''?null:Number(v(k));
     const patch=office()?{description:v('description'),qty:Math.max(1,parseInt(v('qty'),10)||1),vendor_id:v('vendor_id')||null,vendor_other:v('vendor_other')||null,po_number:v('po_number')||null,vendor_order_no:v('vendor_order_no')||null,
@@ -323,7 +326,7 @@ const A={
 
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;
   if(el.dataset.a==='open'&&e.target.closest('button,select,input,a'))return;
-  A[el.dataset.a](el.dataset)});
+  A[el.dataset.a](el.dataset,el)});
 document.addEventListener('input',e=>{const el=e.target;
   if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
   if(el.dataset.pick)(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{})[el.dataset.pick]=el.value;
