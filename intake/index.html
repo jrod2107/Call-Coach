@@ -968,7 +968,7 @@ function modelSerial(u){
 const SUM_SYS='You write the job description a field appliance repair technician reads before a service call. '+
   'From the intake answers given, write one short paragraph (2 to 4 sentences, under 90 words) in plain English that gives the gist: '+
   'what the appliance is (brand, style, type), what it is doing wrong, when it started and how often, any error code, and anything the tech should know before arriving '+
-  '(broken parts, recent repairs, tight access, warranty company). Use only facts in the answers. Do not guess a cause or a repair. '+
+  '(broken parts, recent repairs, tight access, warranty company). Use only facts in the answers. Do not guess a cause or a repair. Do not mention anything that was not asked or not provided. '+
   'Do not include the model number, serial number, prices, or any customer name or contact details. '+
   'Reply with only a JSON object: {"summary":"..."}';
 async function summarizeUnit(u,facts){
@@ -1046,11 +1046,21 @@ function plainSummary(u){
   return P.join(" ");
 }
 /* HCP business unit, picked from the intake answers. IDs come from HCP (job_fields.business_unit.id). */
-const BUSINESS_UNITS=Object.assign({residential:"buu_e7e601519e52491fb9a68c1e0d005a52",commercial:"",warranty:""},CFG.hcpBusinessUnits||{});
-function businessUnitId(){
-  const key=isCommercial()?"commercial":S.units.some(u=>u.svc==="Warranty")?"warranty":"residential";
-  return BUSINESS_UNITS[key]||"";
+const BUSINESS_UNITS=Object.assign({
+  residential:"buu_e7e601519e52491fb9a68c1e0d005a52",   // Appliances - Residential
+  commercial:"buu_17083a1667364936880d7bc57c621081",    // Commercial
+  propMgmt:"",       // Appliances - Residential Prop Mngmt (ID not known yet)
+  oemWarranty:"",    // OEM - Warranty - Residential (ID not known yet)
+  homeWarranty:""    // Home Warranty Company (ID not known yet)
+},CFG.hcpBusinessUnits||{});
+function businessUnitKey(){
+  if(isCommercial()) return "commercial";
+  const w=S.units.find(u=>u.svc==="Warranty");
+  if(w) return /^Armis/.test(String(w.ans[W_co.id]||""))?"homeWarranty":"oemWarranty";
+  if(/^Property Manager/.test(String(S.g[PAY_who.id]||""))) return "propMgmt";
+  return "residential";
 }
+function businessUnitId(){ return BUSINESS_UNITS[businessUnitKey()]||""; }
 function buildLineItems(diagSvc){
   const {total}=feeParts(); const items=[];
   const armisCents=S.units.reduce((s,u)=>{ const a=armisCollect(u); return s+(a!=null?Math.round(a*100):0); },0);
@@ -1228,7 +1238,7 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ c
   const {data:{session:s}}=await SB.auth.getSession();
   if(s){ session=s; startSignedIn(); } else showLogin(true);
 })();
-window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,unitFacts,summarizeUnit,state:()=>({online,hcpOk,lastResults})};
+window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,unitFacts,businessUnitKey,businessUnitId,summarizeUnit,state:()=>({online,hcpOk,lastResults})};
 })();
 </script>
 <script src="schedule-settings.js?v=20261113c"></script>
