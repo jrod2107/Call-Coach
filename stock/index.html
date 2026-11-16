@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Appliance — Stock</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
+  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
+  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
+  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
+  color-scheme:dark } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:700}
+h1{font-size:18px} h2{font-size:16px} h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:13px} .muted{color:var(--muted)} .num{text-align:right;font-variant-numeric:tabular-nums}
+.grow{flex:1}
+.top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.top .who{font-size:12px;opacity:.9}
+.top a{color:inherit;text-decoration:none;opacity:.9}
+.wrap{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
+button,.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent-text)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.small{padding:4px 9px;font-size:13px}
+button.big{padding:12px 16px;font-size:16px}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.top button{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+.top button.primary{background:#fff;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%;min-width:0}
+textarea{min-height:56px;resize:vertical}
+.top input,.top select{max-width:260px;background:#fff;color:#171a1e;border-color:transparent}
+.top select{max-width:170px}
+.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin:4px 0 14px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:9px 12px}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--accent-text)}
+.tabs .n{font-size:12px;padding:0 6px;border-radius:99px;background:var(--sunk);color:var(--ink);font-variant-numeric:tabular-nums}
+.tabs .n.hot{background:var(--warn-bg);color:var(--warn)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px 12px;background:var(--sunk);white-space:nowrap}
+th.num{text-align:right}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr[data-a]{cursor:pointer} tbody tr[data-a]:hover{background:var(--sunk)}
+td .mono{white-space:nowrap}
+td.act{white-space:nowrap;text-align:right}
+td.act input{width:86px;display:inline-block}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.info{background:var(--info-bg);color:var(--info)}
+.empty{padding:22px;color:var(--muted);text-align:center}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:9px 11px}
+.notice.bad{background:var(--bad-bg);color:var(--bad)} .notice.good{background:var(--good-bg);color:var(--good)} .notice.info{background:var(--info-bg);color:var(--info)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld>span{font-size:12px;color:var(--muted);font-weight:600}
+.fld.wide{grid-column:1/-1}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sum{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px;color:var(--muted)} .sum b{color:var(--ink)}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,96vw);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.dbody{padding:16px;display:flex;flex-direction:column;gap:14px}
+.dfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+#reader{width:100%;max-width:520px;margin:0 auto;border-radius:var(--r);overflow:hidden;background:#000}
+#reader:empty{display:none}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
+#toast.bad{background:var(--bad);color:#fff}
+#print{display:none}
+@media (max-width:640px){ input,select,textarea{font-size:16px} .wrap{padding:10px 10px 60px} td,th{padding:8px} }
+@media print{
+  @page{size:2.25in 1.25in;margin:0}
+  body{background:#fff} body>*:not(#print){display:none!important}
+  #print{display:block}
+  .label{width:2.25in;height:1.25in;padding:.06in .08in;color:#000;font:8pt/1.15 Arial,Helvetica,sans-serif;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
+  .label .l1{display:flex;justify-content:space-between;font-weight:700;font-size:10pt}
+  .label .l2{font-family:Menlo,Consolas,monospace;font-size:9pt;font-weight:700}
+  .label svg{width:100%;height:.36in;margin:.02in 0}
+  .label .l4{font-size:7pt}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg"></dialog>
+<div id="print"></div>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Stock v1. Tables: stock_items (one row per physical part), stock_catalog, stock_plan, stock_locations, stock_events
+   (see supabase/migrations/*stock_v1.sql).
+   Four numbers per part number and location:
+     on hand = in stock + held;  held = set aside for a job;  available = in stock (the only ones anyone can pull);
+     on order = already on a purchase list.  Restock need = minimum - (available + on order).
+   The database enforces who may change what; this page only hides what a role cannot do. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>n==null||n===''?'':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>new Date().toLocaleDateString('en-CA');
+const fmtDate=iso=>iso?new Date(String(iso).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+const numOrNull=v=>{v=String(v==null?'':v).trim();if(v==='')return null;const n=Number(v);return isFinite(n)&&n>=0?n:null};
+const sum=(a,f)=>a.reduce((t,x)=>t+(Number(f(x))||0),0);
+
+const ACTIVE=['in_stock','held'];
+const PURPOSE={keep:'Keep in stock',ebay:'Sell on eBay',undecided:'Not decided'};
+const COND={new:'New',open_box:'Open box',used:'Used'};
+const STATUS={in_stock:'In stock',held:'Held',used:'Used on a job',sold:'Sold',removed:'Removed'};
+const TABS=[['stock','In stock'],['undecided','Not decided'],['ebay','eBay'],['restock','Restock'],['history','History']];
+const S={session:null,me:null,items:[],hist:[],cat:{},plan:[],locs:[],tab:'stock',q:'',loc:'',loading:false,err:'',dlg:null,scan:null,events:[],cam:null};
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const editor=()=>!!S.me&&['csr','admin','stock'].includes(S.me.role);   /* may change what a part is, its cost and its eBay details */
+const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
+const item=id=>S.items.find(i=>i.id===id)||S.hist.find(i=>i.id===id);
+const locName=id=>(S.locs.find(l=>l.id===id)||{}).name||'';
+const catOf=pn=>S.cat[pn]||{part_number:pn,description:'',brand:''};
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+const opts=(map,cur)=>Object.entries(map).map(([k,l])=>`<option value="${k}" ${cur===k?'selected':''}>${esc(l)}</option>`).join('');
+const locOpts=cur=>S.locs.filter(l=>l.active||l.id===cur).map(l=>`<option value="${l.id}" ${cur===l.id?'selected':''}>${esc(l.name)}</option>`).join('');
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4200)}
+
+/* ---------- data ---------- */
+async function whoami(){
+  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+}
+/* The API returns at most 1000 rows per request, so read in pages until a short page comes back. */
+async function all(table,build){
+  const out=[];
+  for(let from=0;;from+=1000){const {data,error}=await build(SB.from(table)).range(from,from+999);if(error)throw error;out.push(...data);if(data.length<1000)break}
+  return out;
+}
+const one=async q=>{const {data,error}=await q;if(error)throw error;return data||[]};
+async function load(){
+  S.loading=true;render();
+  try{
+    const [items,hist,cat,plan,locs]=await Promise.all([
+      all('stock_items',q=>q.select('*').in('status',ACTIVE).order('created_at',{ascending:false}).order('id')),
+      one(SB.from('stock_items').select('*').in('status',['used','sold','removed']).order('updated_at',{ascending:false}).limit(300)),
+      all('stock_catalog',q=>q.select('*').order('part_number')),
+      all('stock_plan',q=>q.select('*').order('part_number').order('location_id')),
+      one(SB.from('stock_locations').select('*').order('name'))]);
+    S.items=items;S.hist=hist;S.plan=plan;S.locs=locs;S.cat=Object.fromEntries(cat.map(c=>[c.part_number,c]));S.err='';
+  }catch(e){S.err=e.message||String(e)}
+  S.loading=false;render();if(S.dlg)renderDlg();
+}
+/* Change one part, but only if it is still in the state we think it is. If someone else got there first, nothing is
+   changed and the list reloads. This is what stops two people taking the same part. */
+async function updItem(id,from,patch,msg){
+  const {data,error}=await SB.from('stock_items').update(patch).eq('id',id).in('status',from).select('id');
+  if(error){toast(error.message,true);return false}
+  if(!data.length){toast('Someone else just changed that part. The list has been refreshed.',true);await load();return false}
+  if(msg)toast(msg);await load();return true;
+}
+
+/* ---------- the four numbers ---------- */
+const locOK=x=>!S.loc||x.location_id===S.loc;
+const planFor=(pn,loc)=>S.plan.filter(p=>p.part_number===pn&&(!loc||p.location_id===loc));
+function restockRows(){
+  return S.plan.filter(locOK).map(p=>{
+    const here=S.items.filter(i=>i.part_number===p.part_number&&i.location_id===p.location_id&&i.purpose==='keep');
+    const avail=here.filter(i=>i.status==='in_stock').length,held=here.filter(i=>i.status==='held').length;
+    return {pn:p.part_number,loc:p.location_id,min:p.min_qty,on_order:p.on_order,avail,held,need:Math.max(0,p.min_qty-avail-p.on_order)};
+  });
+}
+function groups(filter){
+  const q=S.q.trim().toLowerCase(),m=new Map();
+  for(const i of S.items){
+    if(!filter(i)||!locOK(i))continue;
+    if(q){const c=catOf(i.part_number);if(![i.part_number,c.description,c.brand,i.tag,i.bin,i.held_job,i.held_by_name].join(' ').toLowerCase().includes(q))continue}
+    let g=m.get(i.part_number);if(!g){g={pn:i.part_number,units:[]};m.set(i.part_number,g)}g.units.push(i);
+  }
+  return [...m.values()].sort((a,b)=>a.pn.localeCompare(b.pn));
+}
+const ebayStage=i=>i.status==='sold'?'Sold':i.ebay_listed_on?'Listed':'To list';
+
+/* ---------- views ---------- */
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance Stock</h2>
+  <p class="muted">Sign in with the email and password you were given.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given access to Stock yet. Ask Jake to set your role.</p>
+  <button data-a="signout">Sign out</button></div>`}
+
+function partCell(pn){const c=catOf(pn);return `<span class="mono">${esc(pn)}</span><br><span class="muted">${esc([c.brand,c.description].filter(Boolean).join(' · ')||'No name yet')}</span>`}
+function tStock(){
+  const gs=groups(i=>i.purpose==='keep'),need=new Map();
+  for(const r of restockRows())if(r.need)need.set(r.pn,(need.get(r.pn)||0)+r.need);
+  if(!gs.length)return `<div class="empty">${S.loading?'Loading…':S.q?'Nothing here matches your search.':'No parts marked "Keep in stock" yet. Scan parts in, then mark the ones to keep.'}</div>`;
+  return `<div class="scroll"><table><thead><tr><th>Part</th><th class="num">On hand</th><th class="num">Held</th><th class="num">Available</th><th class="num">On order</th><th class="num">Minimum</th><th>Where</th></tr></thead><tbody>
+   ${gs.map(g=>{const held=g.units.filter(u=>u.status==='held'),pl=planFor(g.pn,S.loc),where=[...new Set(g.units.map(u=>locName(u.location_id)+(u.bin?' '+u.bin:'')))];
+     return `<tr data-a="open" data-pn="${esc(g.pn)}"><td>${partCell(g.pn)}</td><td class="num">${g.units.length}</td>
+      <td class="num">${held.length?`${held.length}<br><span class="muted">${esc([...new Set(held.map(u=>'#'+u.held_job))].join(', '))}</span>`:'0'}</td>
+      <td class="num"><b>${g.units.length-held.length}</b></td><td class="num">${sum(pl,p=>p.on_order)}</td><td class="num">${sum(pl,p=>p.min_qty)||'<span class="muted">—</span>'}</td>
+      <td>${esc(where.slice(0,3).join(', '))}${where.length>3?' …':''} ${need.get(g.pn)?pill('Reorder '+need.get(g.pn),'warn'):''}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+function tUndecided(){
+  const gs=groups(i=>i.purpose==='undecided');
+  if(!gs.length)return `<div class="empty">${S.loading?'Loading…':'Nothing waiting to be sorted.'}</div>`;
+  return `<div class="scroll"><table><thead><tr><th>Part</th><th class="num">Count</th><th>Where</th><th></th></tr></thead><tbody>
+   ${gs.map(g=>`<tr data-a="open" data-pn="${esc(g.pn)}"><td>${partCell(g.pn)}</td><td class="num">${g.units.length}</td>
+     <td>${esc([...new Set(g.units.map(u=>locName(u.location_id)))].join(', '))}</td>
+     <td class="act">${editor()?`<button class="small primary" data-a="bulk" data-p="keep" data-pn="${esc(g.pn)}">Keep in stock</button> <button class="small" data-a="bulk" data-p="ebay" data-pn="${esc(g.pn)}">Sell on eBay</button>`:''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function tEbay(){
+  const q=S.q.trim().toLowerCase();
+  const rows=[...S.items,...S.hist.filter(i=>i.status==='sold')].filter(i=>i.purpose==='ebay'&&i.status!=='held'&&locOK(i)&&
+    (!q||[i.part_number,catOf(i.part_number).description,catOf(i.part_number).brand,i.tag].join(' ').toLowerCase().includes(q)));
+  const sold=rows.filter(i=>i.status==='sold'),listed=rows.filter(i=>i.status!=='sold'&&i.ebay_listed_on),tolist=rows.filter(i=>i.status!=='sold'&&!i.ebay_listed_on);
+  const head=`<div class="sum" style="padding:12px 12px 0"><span><b>${tolist.length}</b> to list</span><span><b>${listed.length}</b> listed, asking <b>${money(sum(listed,i=>i.ebay_price))||'$0.00'}</b></span>
+    <span><b>${sold.length}</b> sold for <b>${money(sum(sold,i=>i.sold_price))||'$0.00'}</b>${editor()?`, cost ${money(sum(sold,i=>i.cost))||'$0.00'}`:''}</span></div>`;
+  if(!rows.length)return head+`<div class="empty">${S.loading?'Loading…':'Nothing marked for eBay yet.'}</div>`;
+  const order={'To list':0,'Listed':1,'Sold':2};rows.sort((a,b)=>order[ebayStage(a)]-order[ebayStage(b)]||a.part_number.localeCompare(b.part_number));
+  return head+`<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>Condition</th><th>Stage</th><th class="num">${editor()?'Cost':''}</th><th class="num">Price</th><th></th></tr></thead><tbody>
+   ${rows.map(i=>{const st=ebayStage(i);return `<tr data-a="open" data-pn="${esc(i.part_number)}" data-unit="${i.id}"><td class="mono">${esc(i.tag)}</td><td>${partCell(i.part_number)}</td><td>${esc(COND[i.condition])}</td>
+     <td>${pill(st,st==='Sold'?'good':st==='Listed'?'info':'warn')}${st==='Sold'?`<br><span class="muted">${fmtDate(i.sold_on)}</span>`:''}</td>
+     <td class="num">${editor()?money(i.cost):''}</td><td class="num">${money(st==='Sold'?i.sold_price:i.ebay_price)}</td>
+     <td class="act">${!editor()||st==='Sold'?'':st==='To list'?`<input type="number" step="0.01" min="0" inputmode="decimal" id="ep-${i.id}" placeholder="Asking $" aria-label="Asking price"> <button class="small primary" data-a="list" data-id="${i.id}">Listed</button>`
+       :`<input type="number" step="0.01" min="0" inputmode="decimal" id="sp-${i.id}" value="${esc(i.ebay_price)}" aria-label="Sold price"> <button class="small primary" data-a="sold" data-id="${i.id}">Sold</button>`}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+function tRestock(){
+  const q=S.q.trim().toLowerCase(),hit=r=>!q||[r.pn,catOf(r.pn).description,catOf(r.pn).brand].join(' ').toLowerCase().includes(q);
+  const rows=restockRows().filter(hit),need=rows.filter(r=>r.need),onorder=rows.filter(r=>r.on_order);
+  const tbl=(list,ordering)=>`<div class="scroll"><table><thead><tr><th>Part</th><th>Location</th><th class="num">Minimum</th><th class="num">Available</th><th class="num">Held</th><th class="num">On order</th>${ordering?'<th class="num">To order</th><th></th>':'<th></th>'}</tr></thead><tbody>
+    ${list.map(r=>`<tr data-a="open" data-pn="${esc(r.pn)}"><td>${partCell(r.pn)}</td><td>${esc(locName(r.loc))}</td><td class="num">${r.min}</td><td class="num">${r.avail}</td><td class="num">${r.held}</td><td class="num">${r.on_order}</td>
+      ${ordering?`<td class="num"><b>${r.need}</b></td><td class="act">${office()?`<button class="small primary" data-a="ordered" data-pn="${esc(r.pn)}" data-loc="${r.loc}" data-n="${r.need}">Mark ${r.need} ordered</button>`:''}</td>`
+       :`<td class="act">${office()?`<button class="small" data-a="unorder" data-pn="${esc(r.pn)}" data-loc="${r.loc}">Clear on order</button>`:''}</td>`}</tr>`).join('')}</tbody></table></div>`;
+  return `<div style="padding:12px"><h3>Needs ordering</h3><p class="muted" style="margin:4px 0 0">Kept parts below their minimum. Parts held for a job count as gone, and parts already on order are not asked for twice.</p></div>
+   ${need.length?tbl(need,true):`<div class="empty">${S.loading?'Loading…':S.plan.length?'Nothing needs ordering.':'No minimums set yet. Open a part under In stock and set how many to keep.'}</div>`}
+   ${onorder.length?`<div style="padding:12px;border-top:1px solid var(--line)"><h3>Already on order</h3><p class="muted" style="margin:4px 0 0">Scanning a part in at that location takes one off this count.</p></div>${tbl(onorder,false)}`:''}`;
+}
+function tHistory(){
+  const q=S.q.trim().toLowerCase();
+  const rows=S.hist.filter(i=>locOK(i)&&(!q||[i.part_number,catOf(i.part_number).description,i.tag,i.used_job].join(' ').toLowerCase().includes(q)));
+  if(!rows.length)return `<div class="empty">${S.loading?'Loading…':'Nothing used, sold or removed yet.'}</div>`;
+  return `<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>What happened</th><th>When</th></tr></thead><tbody>
+   ${rows.map(i=>`<tr data-a="open" data-pn="${esc(i.part_number)}" data-unit="${i.id}"><td class="mono">${esc(i.tag)}</td><td>${partCell(i.part_number)}</td>
+     <td>${i.status==='used'?'Used on job #'+esc(i.used_job):i.status==='sold'?'Sold'+(i.sold_price!=null?' for '+money(i.sold_price):''):'Removed from stock'}</td>
+     <td>${fmtDate(i.used_on||i.sold_on||i.updated_at)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function vMain(){
+  const cnt={stock:new Set(S.items.filter(i=>i.purpose==='keep').map(i=>i.part_number)).size,undecided:S.items.filter(i=>i.purpose==='undecided').length,
+    ebay:S.items.filter(i=>i.purpose==='ebay').length,restock:restockRows().filter(r=>r.need).length,history:S.hist.length};
+  const body={stock:tStock,undecided:tUndecided,ebay:tEbay,restock:tRestock,history:tHistory}[S.tab]();
+  return `<header class="top"><a href="../home/" aria-label="Back to Home">← Home</a><h1>Stock</h1>
+   <input id="q" type="search" placeholder="Search part, name, tag or job" value="${esc(S.q)}" aria-label="Search stock">
+   <select id="locf" aria-label="Location"><option value="">All locations</option>${locOpts(S.loc)}</select>
+   <span class="grow"></span>
+   <button class="primary" data-a="scan">Scan parts in</button>
+   ${office()?'<button data-a="locs">Locations</button>':''}
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load stock: ${esc(S.err)}</div>`:''}
+   <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${cnt[k]&&['undecided','restock'].includes(k)?' hot':''}">${cnt[k]}</span></button>`).join('')}</div>
+   <div class="panel">${body}</div>
+  </div>`}
+
+/* ---------- dialogs ---------- */
+function unitStatus(u){
+  if(u.status==='held')return pill('Held for job #'+u.held_job,'warn');
+  if(u.status==='in_stock')return u.purpose==='ebay'?pill(ebayStage(u),u.ebay_listed_on?'info':'warn'):pill('Available','good');
+  return pill(STATUS[u.status],'');
+}
+function dPart(pn){
+  const c=catOf(pn),units=[...S.items,...S.hist].filter(i=>i.part_number===pn),act=units.filter(u=>ACTIVE.includes(u.status)),past=units.filter(u=>!ACTIVE.includes(u.status));
+  const avail=act.filter(u=>u.status==='in_stock'&&u.purpose!=='ebay'),ro=editor()?'':'disabled';
+  return `<div class="dhead"><h2 class="mono">${esc(pn)}</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div class="fields"><label class="fld"><span>What is it</span><input id="c-description" value="${esc(c.description)}" placeholder="e.g. dryer heating element" ${ro}></label>
+    <label class="fld"><span>Brand</span><input id="c-brand" value="${esc(c.brand)}" placeholder="e.g. Whirlpool" ${ro}></label>
+    ${editor()?`<div class="fld" style="justify-content:flex-end"><button data-a="savecat" data-pn="${esc(pn)}">Save name and brand</button></div>`:''}</div>
+   <div><h3>Take one for a job</h3>
+    ${avail.length?`<div class="row" style="margin-top:6px"><input id="g-job" class="mono" placeholder="Job number" aria-label="Job number" style="width:130px">
+      <select id="g-loc" aria-label="From location" style="width:auto">${[...new Set(avail.map(u=>u.location_id))].map(l=>`<option value="${l}">${esc(locName(l))} (${avail.filter(u=>u.location_id===l).length} available)</option>`).join('')}</select>
+      <button data-a="holdone" data-pn="${esc(pn)}">Hold one</button><button class="primary" data-a="useone" data-pn="${esc(pn)}">Use one now</button></div>
+      <p class="muted" style="margin:6px 0 0">Hold sets one aside for an upcoming job so nobody else can take it. Use takes it out of stock.</p>`
+     :`<p class="muted" style="margin:6px 0 0">None available right now.${act.some(u=>u.status==='held')?' The ones on hand are held for other jobs.':''}</p>`}</div>
+   <div><h3>How many to keep</h3>
+    <div class="scroll"><table><thead><tr><th>Location</th><th class="num">Available</th><th class="num">Held</th><th class="num">Minimum</th><th class="num">On order</th></tr></thead><tbody>
+     ${S.locs.filter(l=>l.active).map(l=>{const p=planFor(pn,l.id)[0]||{min_qty:0,on_order:0},here=act.filter(u=>u.location_id===l.id&&u.purpose==='keep');
+       return `<tr><td>${esc(l.name)}</td><td class="num">${here.filter(u=>u.status==='in_stock').length}</td><td class="num">${here.filter(u=>u.status==='held').length}</td>
+        <td class="num">${office()?`<input type="number" min="0" inputmode="numeric" style="width:76px" data-plan="${esc(pn)}" data-loc="${l.id}" data-k="min_qty" value="${p.min_qty}" aria-label="Minimum at ${esc(l.name)}">`:p.min_qty}</td>
+        <td class="num">${office()?`<input type="number" min="0" inputmode="numeric" style="width:76px" data-plan="${esc(pn)}" data-loc="${l.id}" data-k="on_order" value="${p.on_order}" aria-label="On order for ${esc(l.name)}">`:p.on_order}</td></tr>`}).join('')}</tbody></table></div></div>
+   <div><h3>Each part on hand</h3>
+    ${act.length?`<div class="scroll"><table><thead><tr><th>Tag</th><th>Where</th><th>Kept for</th><th>Status</th>${editor()?'<th class="num">Cost</th>':''}</tr></thead><tbody>
+     ${act.map(u=>`<tr data-a="unit" data-id="${u.id}"><td class="mono">${esc(u.tag)}</td><td>${esc(locName(u.location_id))}${u.bin?' · '+esc(u.bin):''}</td><td>${esc(PURPOSE[u.purpose])}</td>
+       <td>${unitStatus(u)}${u.status==='held'&&u.held_by_name?`<br><span class="muted">by ${esc(u.held_by_name)}</span>`:''}</td>${editor()?`<td class="num">${money(u.cost)}</td>`:''}</tr>`).join('')}</tbody></table></div>`
+     :'<p class="muted" style="margin:6px 0 0">None on hand.</p>'}</div>
+   ${past.length?`<div><h3>Used, sold or removed</h3><ul class="hist" style="margin-top:6px">${past.slice(0,20).map(u=>`<li><button class="ghost small mono" data-a="unit" data-id="${u.id}">${esc(u.tag)}</button> ${u.status==='used'?'Used on job #'+esc(u.used_job):esc(STATUS[u.status])} · ${fmtDate(u.used_on||u.sold_on||u.updated_at)}</li>`).join('')}</ul></div>`:''}
+  </div>
+  <div class="dfoot"><button data-a="scan" data-pn="${esc(pn)}">Scan more of this part in</button><span class="grow"></span><button data-a="close">Done</button></div>`}
+function dUnit(u){
+  const c=catOf(u.part_number),live=ACTIVE.includes(u.status),ed=editor(),ro=ed&&live?'':'disabled',mv=live?'':'disabled';
+  return `<div class="dhead"><button class="ghost small" data-a="back">← ${esc(u.part_number)}</button><h2 class="mono">${esc(u.tag)}</h2>${unitStatus(u)}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div><span class="mono">${esc(u.part_number)}</span> ${esc([c.brand,c.description].filter(Boolean).join(' · '))}</div>
+   ${u.status==='held'?`<div class="notice">Held for job #${esc(u.held_job)}${u.held_by_name?' by '+esc(u.held_by_name):''}${u.held_at?' since '+fmtDate(u.held_at):''}. It does not count as available.
+      <div class="row" style="margin-top:8px"><button class="primary" data-a="use" data-id="${u.id}">Use on job #${esc(u.held_job)}</button><button data-a="release" data-id="${u.id}">Release the hold</button></div></div>`:''}
+   ${u.status==='in_stock'&&u.purpose!=='ebay'?`<div class="row"><input id="u-job" class="mono" placeholder="Job number" aria-label="Job number" style="width:130px"><button data-a="hold" data-id="${u.id}">Hold for this job</button><button class="primary" data-a="use" data-id="${u.id}">Use on this job</button></div>`:''}
+   ${u.status==='in_stock'&&u.purpose==='ebay'&&ed?`<div class="row">${u.ebay_listed_on?`<span>Listed ${fmtDate(u.ebay_listed_on)} at ${money(u.ebay_price)}.</span><input id="sp-${u.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(u.ebay_price)}" aria-label="Sold price" style="width:110px"><button class="primary" data-a="sold" data-id="${u.id}">Mark sold</button>`
+      :`<input id="ep-${u.id}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Asking $" aria-label="Asking price" style="width:110px"><button class="primary" data-a="list" data-id="${u.id}">Mark listed on eBay</button>`}</div>`:''}
+   ${!live?`<div class="notice info">${u.status==='used'?`Used on job #${esc(u.used_job)} on ${fmtDate(u.used_on)}.`:u.status==='sold'?`Sold ${fmtDate(u.sold_on)}${u.sold_price!=null?' for '+money(u.sold_price):''}.`:'Removed from stock.'}
+      ${ed?`<div class="row" style="margin-top:8px"><button data-a="restore" data-id="${u.id}">Put it back in stock</button></div>`:''}</div>`:''}
+   <div class="fields">
+    <label class="fld"><span>Location</span><select id="u-location_id" ${mv}>${locOpts(u.location_id)}</select></label>
+    <label class="fld"><span>Shelf or bin</span><input id="u-bin" value="${esc(u.bin)}" ${mv}></label>
+    <label class="fld"><span>Kept for</span><select id="u-purpose" ${ro}>${opts(PURPOSE,u.purpose)}</select></label>
+    <label class="fld"><span>Condition</span><select id="u-condition" ${ro}>${opts(COND,u.condition)}</select></label>
+    ${ed?`<label class="fld"><span>What we paid</span><input id="u-cost" type="number" step="0.01" min="0" inputmode="decimal" value="${esc(u.cost)}" ${ro}></label>
+    <label class="fld"><span>Bought from</span><input id="u-vendor" value="${esc(u.vendor)}" ${ro}></label>`:''}
+    <label class="fld wide"><span>Notes</span><textarea id="u-notes" ${mv}>${esc(u.notes)}</textarea></label></div>
+   <div><h3>History</h3><ul class="hist" style="margin-top:6px">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(e.what)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul>
+    <p class="muted" style="margin:6px 0 0">Scanned in ${fmtDate(u.created_at)}${u.added_by_name?' by '+esc(u.added_by_name):''}.</p></div>
+  </div>
+  <div class="dfoot">${ed&&live?`<button class="ghost" data-a="remove" data-id="${u.id}">Remove from stock</button>`:''}<span class="grow"></span>
+   <button data-a="print" data-id="${u.id}">Print tag</button>${live?`<button class="primary" data-a="saveunit" data-id="${u.id}">Save</button>`:''}</div>`}
+function dScanShell(){return `<div class="dhead"><h2>Scan parts in</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody"><div id="reader"></div><div id="scanform" style="display:flex;flex-direction:column;gap:12px"></div></div>`}
+function scanForm(){
+  const s=S.scan,known=s.pn&&S.cat[s.pn.trim().toUpperCase()],ed=editor();
+  const f=(label,k,attrs,cls)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="sc-${k}" data-scan="${k}" value="${esc(s[k])}" ${attrs||''}></label>`;
+  return `<div class="row">${s.cam?`<button data-a="camstop">Turn camera off</button>${s.paused?'<button class="primary" data-a="camnext">Scan another barcode</button>':'<span class="muted">Point the camera at the barcode on the box.</span>'}`
+     :'<button class="primary big" data-a="camstart">Scan a barcode with the camera</button><span class="muted">or type the part number below</span>'}</div>
+   ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button></div>`:''}
+   <div class="fields">
+    ${f('Part number *','pn','class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false"','wide')}
+    ${s.pn?`<div class="fld wide">${known?'<span class="notice info" style="font-weight:400;font-size:14px">This part number is already known, so its name and brand are filled in.</span>':'<span class="notice" style="font-weight:400;font-size:14px">New part number. Type what it is once and it will be remembered.</span>'}</div>`:''}
+    ${f('What is it','description','placeholder="e.g. dryer heating element"')}${f('Brand','brand','placeholder="e.g. Whirlpool"')}
+    ${f('How many','qty','type="number" min="1" max="200" inputmode="numeric"')}
+    <label class="fld"><span>Location</span><select id="sc-loc" data-scan="loc">${locOpts(s.loc)}</select></label>
+    ${f('Shelf or bin','bin','placeholder="optional"')}
+    <label class="fld"><span>Kept for</span><select id="sc-purpose" data-scan="purpose">${opts(PURPOSE,s.purpose)}</select></label>
+    <label class="fld"><span>Condition</span><select id="sc-condition" data-scan="condition">${opts(COND,s.condition)}</select></label>
+    ${ed?f('What we paid, each','cost','type="number" step="0.01" min="0" inputmode="decimal" placeholder="leave blank if unknown"'):''}
+   </div>
+   <button class="primary big" data-a="addstock">${s.busy?'Adding…':'Add to stock'}</button>`}
+function dLocs(){
+  return `<div class="dhead"><h2>Locations</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody"><p class="muted">The shop shelf and each truck are separate places. Stock is counted, held and restocked per location.</p>
+   <div class="scroll"><table><thead><tr><th>Name</th><th>Kind</th><th class="num">Parts there</th><th>In use</th></tr></thead><tbody>
+    ${S.locs.map(l=>`<tr><td>${esc(l.name)}</td><td>${l.kind==='truck'?'Truck':'Shop'}</td><td class="num">${S.items.filter(i=>i.location_id===l.id).length}</td>
+      <td><input type="checkbox" style="width:auto" data-locactive="${l.id}" ${l.active?'checked':''} aria-label="${esc(l.name)} in use"></td></tr>`).join('')}</tbody></table></div>
+   <div class="row"><input id="ln-name" placeholder="e.g. Truck – Jules" style="flex:1;min-width:160px" aria-label="New location name">
+    <select id="ln-kind" style="width:auto" aria-label="Kind"><option value="truck">Truck</option><option value="shop">Shop</option></select><button data-a="locadd">Add location</button></div></div>`}
+function renderDlg(){
+  const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
+  if(S.dlg.type==='scan'){if(!$('scanform'))d.innerHTML=dScanShell();$('scanform').innerHTML=scanForm()}
+  else if(S.dlg.type==='locs')d.innerHTML=dLocs();
+  else{const u=S.dlg.unit&&item(S.dlg.unit);d.innerHTML=u?dUnit(u):dPart(S.dlg.pn)}
+  if(!d.open)d.showModal();
+}
+async function closeDlg(){await camStop();S.dlg=null;S.scan=null;const d=$('dlg');d.innerHTML='';if(d.open)d.close()}
+async function openUnit(id){
+  const u=item(id);if(!u)return;
+  await camStop();S.scan=null;S.dlg={type:'part',pn:u.part_number,unit:id};S.events=[];$('dlg').innerHTML='';renderDlg();
+  const {data}=await SB.from('stock_events').select('*').eq('item_id',id).order('at');
+  if(S.dlg&&S.dlg.unit===id){S.events=data||[];renderDlg()}
+}
+function printTags(list){
+  $('print').innerHTML=list.map((u,n)=>{const c=catOf(u.part_number);return `<div class="label"><div class="l1"><span>${esc(u.tag)}</span><span>${esc(c.brand)}</span></div>
+   <div class="l2">${esc(u.part_number)}</div><div>${esc(c.description)}</div><svg id="bc${n}"></svg>
+   <div class="l4">${esc(locName(u.location_id))}${u.bin?' · '+esc(u.bin):''} · ${esc(COND[u.condition])} · ${fmtDate(u.created_at)}</div></div>`}).join('');
+  list.forEach((u,n)=>{try{window.JsBarcode('#bc'+n,u.tag,{format:'CODE128',displayValue:false,margin:0,height:40,width:1.6})}catch(e){}});
+  window.print();
+}
+
+/* ---------- camera ---------- */
+async function camStart(){
+  if(!window.Html5Qrcode){toast('The barcode scanner did not load. Check the connection and reload, or type the part number.',true);return}
+  const F=window.Html5QrcodeSupportedFormats,fm=['CODE_128','CODE_39','CODE_93','EAN_13','EAN_8','UPC_A','UPC_E','ITF','QR_CODE','DATA_MATRIX'].map(k=>F[k]).filter(v=>v!=null);
+  try{
+    S.cam=new window.Html5Qrcode('reader',{formatsToSupport:fm,experimentalFeatures:{useBarCodeDetectorIfSupported:true},verbose:false});
+    await S.cam.start({facingMode:'environment'},{fps:10,qrbox:(w,h)=>({width:Math.floor(w*.92),height:Math.max(70,Math.floor(h*.5))})},onScan,()=>{});
+    S.scan.cam=true;S.scan.paused=false;
+  }catch(e){S.cam=null;if(S.scan)S.scan.cam=false;toast('Could not open the camera. Allow camera access for this page, or type the part number. ('+(e&&e.message||e)+')',true)}
+  if(S.dlg&&S.dlg.type==='scan')renderDlg();
+}
+async function camStop(){
+  if(S.cam){try{await S.cam.stop()}catch(e){}try{S.cam.clear()}catch(e){}S.cam=null}
+  if(S.scan){S.scan.cam=false;S.scan.paused=false}
+}
+function camPause(){if(S.cam&&S.scan&&!S.scan.paused){S.scan.paused=true;try{S.cam.pause(true)}catch(e){}}}
+function camResume(){if(S.cam&&S.scan&&S.scan.paused){S.scan.paused=false;try{S.cam.resume()}catch(e){}}}
+function onScan(text){
+  if(!S.scan||S.scan.paused)return;
+  const code=String(text||'').trim().toUpperCase();if(!code)return;
+  camPause();try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}
+  if(/^S\d{5,}$/.test(code)){const u=[...S.items,...S.hist].find(i=>i.tag===code);if(u){openUnit(u.id);return}toast('Tag '+code+' was not found in stock.',true);renderDlg();return}
+  if(/^P\d{5,}$/.test(code)){toast(code+' is a Parts desk tag for a job part, not a stock part number.',true);renderDlg();return}
+  setScanPn(code);renderDlg();
+}
+function setScanPn(v){
+  const s=S.scan;s.pn=v;const c=S.cat[String(v).trim().toUpperCase()];
+  if(c){s.description=c.description;s.brand=c.brand;s.known=true}else if(s.known){s.description='';s.brand='';s.known=false}
+}
+
+/* ---------- actions ---------- */
+const jobFrom=id=>{const el=$(id);return el?el.value.trim().replace(/^#/,''):''};
+const A={
+  tab:d=>{S.tab=d.t;render()},
+  refresh:()=>load(),
+  signout:async()=>{await SB.auth.signOut();location.reload()},
+  open:d=>{if(d.unit){openUnit(d.unit);return}S.dlg={type:'part',pn:d.pn,unit:null};renderDlg()},
+  unit:d=>openUnit(d.id),
+  back:()=>{S.dlg.unit=null;renderDlg()},
+  close:()=>closeDlg(),
+  locs:()=>{S.dlg={type:'locs'};renderDlg()},
+  scan:async d=>{
+    const shop=S.locs.find(l=>l.active&&l.kind==='shop')||S.locs.find(l=>l.active);
+    if(!shop){toast('Add a location first.',true);return}
+    const keep=S.scan||{};
+    S.scan={pn:'',description:'',brand:'',known:false,qty:1,loc:keep.loc||S.loc||shop.id,bin:'',purpose:'undecided',condition:'new',cost:'',cam:false,paused:false,busy:false,last:null};
+    if(d&&d.pn)setScanPn(d.pn);
+    S.dlg={type:'scan'};$('dlg').innerHTML='';renderDlg();
+  },
+  camstart:()=>camStart(),
+  camstop:async()=>{await camStop();renderDlg()},
+  camnext:()=>{S.scan.pn='';S.scan.description='';S.scan.brand='';S.scan.known=false;camResume();renderDlg()},
+  addstock:async()=>{
+    const s=S.scan;if(s.busy)return;
+    const pn=s.pn.trim().toUpperCase(),qty=Math.min(200,Math.max(1,parseInt(s.qty,10)||1));
+    if(!pn){toast('Scan or type the part number first.',true);return}
+    if(!s.loc){toast('Pick the location.',true);return}
+    s.busy=true;renderDlg();
+    const cat={part_number:pn,description:String(s.description||'').trim(),brand:String(s.brand||'').trim()};
+    let {error}=await SB.from('stock_catalog').upsert(cat);
+    let rows=null;
+    if(!error){const r=await SB.from('stock_items').insert(Array.from({length:qty},()=>({part_number:pn,location_id:s.loc,bin:String(s.bin||'').trim()||null,purpose:s.purpose,condition:s.condition,cost:editor()?numOrNull(s.cost):null}))).select('*');error=r.error;rows=r.data}
+    s.busy=false;
+    if(error){toast(error.message,true);renderDlg();return}
+    S.cat[pn]=Object.assign({},S.cat[pn],cat);S.items.unshift(...rows);
+    const tags=rows.map(r=>r.tag).sort();
+    s.last={ids:rows.map(r=>r.id),msg:`Added ${qty} × ${pn} to ${locName(s.loc)}. ${qty===1?'Tag '+tags[0]:'Tags '+tags[0]+' to '+tags[tags.length-1]}.`};
+    s.pn='';s.description='';s.brand='';s.known=false;s.qty=1;s.cost='';
+    camResume();render();renderDlg();
+    if(!s.cam){const el=$('sc-pn');if(el)el.focus()}
+    load();
+  },
+  printlast:()=>{const l=S.scan&&S.scan.last;if(l)printTags(l.ids.map(item).filter(Boolean))},
+  print:d=>printTags([item(d.id)]),
+  hold:async d=>{const job=jobFrom('u-job');if(!job){toast('Type the job number first.',true);return}
+    await updItem(d.id,['in_stock'],{status:'held',held_job:job},`Held for job #${job}. Nobody else can take it now.`)},
+  release:async d=>{await updItem(d.id,['held'],{status:'in_stock'},'Hold released. It is available again.')},
+  use:async d=>{const u=item(d.id),job=u.status==='held'?u.held_job:jobFrom('u-job');if(!job){toast('Type the job number first.',true);return}
+    if(await updItem(d.id,ACTIVE,{status:'used',used_job:job,used_on:today()},`${u.tag} used on job #${job}.`+restockNote(u))){S.dlg.unit=null;renderDlg()}},
+  holdone:async d=>{const job=jobFrom('g-job'),u=pickOne(d.pn);if(!job){toast('Type the job number first.',true);return}if(!u)return;
+    await updItem(u.id,['in_stock'],{status:'held',held_job:job},`${u.tag} held for job #${job}. Nobody else can take it now.`)},
+  useone:async d=>{const job=jobFrom('g-job'),u=pickOne(d.pn);if(!job){toast('Type the job number first.',true);return}if(!u)return;
+    await updItem(u.id,['in_stock'],{status:'used',used_job:job,used_on:today()},`${u.tag} used on job #${job}.`+restockNote(u))},
+  bulk:async d=>{const {error}=await SB.from('stock_items').update({purpose:d.p}).eq('part_number',d.pn).eq('purpose','undecided').in('status',ACTIVE);
+    if(error){toast(error.message,true);return}toast(`${d.pn} marked "${PURPOSE[d.p]}".`);load()},
+  list:async d=>{const price=numOrNull(($('ep-'+d.id)||{}).value);if(price==null){toast('Type the asking price first.',true);return}
+    await updItem(d.id,['in_stock'],{ebay_listed_on:today(),ebay_price:price},'Marked as listed on eBay.')},
+  sold:async d=>{const price=numOrNull(($('sp-'+d.id)||{}).value);if(price==null){toast('Type what it sold for first.',true);return}
+    if(await updItem(d.id,['in_stock'],{status:'sold',sold_price:price,sold_on:today()},'Marked sold for '+money(price)+'.')&&S.dlg){S.dlg.unit=null;renderDlg()}},
+  remove:async(d,el)=>{if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Click again to remove it';el.style.color='var(--bad)';
+      setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.textContent='Remove from stock';el.style.color=''}},5000);return}
+    if(await updItem(d.id,ACTIVE,{status:'removed'},'Removed from stock. It is under History.')){S.dlg.unit=null;renderDlg()}},
+  restore:async d=>{await updItem(d.id,['used','sold','removed'],{status:'in_stock',sold_price:null,sold_on:null},'Back in stock.')},
+  saveunit:async d=>{const v=k=>{const el=$('u-'+k);return el?el.value.trim():''};
+    const patch={location_id:v('location_id'),bin:v('bin')||null,notes:v('notes')||null};
+    if(editor())Object.assign(patch,{purpose:v('purpose'),condition:v('condition'),cost:numOrNull(v('cost')),vendor:v('vendor')||null});
+    await updItem(d.id,ACTIVE,patch,'Saved.')},
+  savecat:async d=>{const patch={description:$('c-description').value.trim(),brand:$('c-brand').value.trim()};
+    const {error}=await SB.from('stock_catalog').update(patch).eq('part_number',d.pn);
+    if(error){toast(error.message,true);return}Object.assign(S.cat[d.pn]||{},patch);toast('Saved.');render()},
+  ordered:async d=>{const cur=planFor(d.pn,d.loc)[0];if(!cur)return;
+    const {error}=await SB.from('stock_plan').update({on_order:cur.on_order+(+d.n)}).eq('part_number',d.pn).eq('location_id',d.loc);
+    if(error){toast(error.message,true);return}toast(`${d.n} × ${d.pn} marked as ordered. Scanning them in takes them off the on-order count.`);load()},
+  unorder:async d=>{const {error}=await SB.from('stock_plan').update({on_order:0}).eq('part_number',d.pn).eq('location_id',d.loc);
+    if(error){toast(error.message,true);return}toast('On order cleared for '+d.pn+'.');load()},
+  locadd:async()=>{const name=$('ln-name').value.trim();if(!name)return;
+    const {error}=await SB.from('stock_locations').insert({name,kind:$('ln-kind').value});
+    if(error){toast(/duplicate/i.test(error.message)?'There is already a location with that name.':error.message,true);return}toast('Location added.');await load()}
+};
+function pickOne(pn){
+  const loc=($('g-loc')||{}).value,list=S.items.filter(i=>i.part_number===pn&&i.status==='in_stock'&&i.purpose!=='ebay'&&(!loc||i.location_id===loc));
+  const u=list.find(i=>i.purpose==='keep')||list[0];
+  if(!u)toast('None available at that location.',true);
+  return u;
+}
+/* Tells the person when using this part drops the location below its minimum. */
+function restockNote(u){
+  if(u.purpose!=='keep')return'';
+  const p=planFor(u.part_number,u.location_id)[0];if(!p||!p.min_qty)return'';
+  const avail=S.items.filter(i=>i.part_number===u.part_number&&i.location_id===u.location_id&&i.purpose==='keep'&&i.status==='in_stock'&&i.id!==u.id).length;
+  return avail+p.on_order<p.min_qty?' It is now on the Restock list.':'';
+}
+
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;
+  if(['open','unit'].includes(el.dataset.a)&&el.tagName==='TR'&&e.target.closest('button,select,input,a'))return;
+  A[el.dataset.a](el.dataset,el)});
+document.addEventListener('input',e=>{const el=e.target;
+  if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
+  if(el.dataset.scan&&S.scan)S.scan[el.dataset.scan]=el.value});
+document.addEventListener('change',async e=>{const el=e.target;
+  if(el.id==='locf'){S.loc=el.value;render();return}
+  if(el.dataset.scan==='pn'&&S.scan){setScanPn(el.value.trim().toUpperCase());renderDlg();return}
+  if(el.dataset.plan){const k=el.dataset.k,val=Math.max(0,parseInt(el.value,10)||0),pn=el.dataset.plan,loc=el.dataset.loc,cur=planFor(pn,loc)[0]||{min_qty:0,on_order:0};
+    const row={part_number:pn,location_id:loc,min_qty:cur.min_qty,on_order:cur.on_order,[k]:val};
+    const {error}=await SB.from('stock_plan').upsert(row,{onConflict:'part_number,location_id'});
+    if(error){toast(error.message,true);return}
+    const i=S.plan.findIndex(p=>p.part_number===pn&&p.location_id===loc);if(i>=0)S.plan[i]=row;else S.plan.push(row);
+    toast(k==='min_qty'?`Minimum for ${pn} at ${locName(loc)} is now ${val}.`:`On order for ${pn} at ${locName(loc)} is now ${val}.`);render();return}
+  if(el.dataset.locactive){const {error}=await SB.from('stock_locations').update({active:el.checked}).eq('id',el.dataset.locactive);
+    if(error){toast(error.message,true);el.checked=!el.checked;return}const l=S.locs.find(x=>x.id===el.dataset.locactive);if(l)l.active=el.checked;toast('Saved.');render()}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='sc-pn'){e.preventDefault();setScanPn(e.target.value.trim().toUpperCase());renderDlg();const n=$('sc-description');if(n)n.focus()}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(allowed())load()});
+$('dlg').addEventListener('close',()=>{camStop();S.dlg=null;S.scan=null});
+window.addEventListener('focus',()=>{if(S.session&&allowed()&&!S.dlg&&!S.loading)load()});
+
+function render(){
+  $('app').innerHTML=!SB?'<div class="card"><h2>Stock</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vWaiting():vMain();
+}
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&allowed())load();
+})();
+</script>
+</body>
+</html>

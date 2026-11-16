@@ -68,16 +68,17 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Date().toLocaleDateString('en-CA');
 const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5);
-const ROLES=['admin','csr','tech','pending'];
-const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',pending:'Waiting for access'};
+const ROLES=['admin','csr','tech','stock','pending'];
+const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',stock:'Stock helper',pending:'Waiting for access'};
 const TOOLS=[
   {href:'../parts/',name:'Parts desk',desc:'Request, order, receive and return parts.',roles:['admin','csr','tech']},
+  {href:'../stock/',name:'Stock',desc:'Scan parts in, hold them for jobs, restock and eBay lists.',roles:['admin','csr','tech','stock']},
   {href:'../intake/',name:'Call intake',desc:'Take a call and book it into Housecall Pro.',roles:['admin','csr']},
   {href:'../desk/#tag',name:'Model number finder',desc:'Where to find the model and serial tag on each appliance.',roles:['admin','csr']}
 ];
 const S={session:null,me:null,parts:[],intakes:[],team:[],loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
-const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
 
 let toastTimer;
 function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
@@ -89,7 +90,7 @@ async function whoami(){
 async function load(){
   S.loading=true;render();
   const since=new Date(Date.now()-7*864e5).toISOString();
-  const jobs=[SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
+  const jobs=[S.me.role==='stock'?Promise.resolve({data:[]}):SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
   if(office())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
   if(S.me.role==='admin')jobs.push(SB.from('profiles').select('id,display_name,email,role').order('email'));
   const res=await Promise.all(jobs);
@@ -116,6 +117,7 @@ function vAttention(){
      <h3>Calls taken in the last 7 days</h3><div class="grid">
       ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../intake/')}</div>`;
   }
+  if(S.me.role==='stock')return `<h3>Your work</h3><div class="grid"><a class="stat" href="../stock/"><b>Stock</b><span>Scan parts in, sort them, and keep the eBay list</span></a></div>`;
   return `<h3>Your parts</h3><div class="grid">
     ${stat(n(p=>p.status==='received'),'Parts in and ready for a job','good','../parts/')}
     ${stat(n(p=>mine(p)&&p.status==='need_to_order'),'Your requests waiting to be ordered','warn','../parts/')}

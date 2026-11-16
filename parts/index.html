@@ -190,6 +190,7 @@ function vMain(){
    <input id="q" type="search" placeholder="Search tag, job, customer, part or PO" value="${esc(S.q)}" aria-label="Search parts">
    <span class="grow"></span>
    <button class="primary" data-a="request">+ Request a part</button>
+   <a href="../stock/" style="color:inherit;text-decoration:none;opacity:.9">Stock</a>
    ${office()?'<button data-a="vendors">Vendors</button>':''}
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
@@ -237,6 +238,7 @@ function dRequest(){
    <div class="fields">${f('Job number *','job_number','','class="mono"')}${f('Customer name','customer_name')}${f('Appliance','appliance','','placeholder="e.g. Whirlpool dryer"')}
     ${f('Part number *','part_number','','class="mono"')}${f('What is it','description','','placeholder="e.g. heating element"')}${f('Quantity','qty','','type="number" min="1"')}
     <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes">${esc(r.notes)}</textarea></label></div>
+   ${r.stock&&r.stock.n?`<div class="notice" style="margin:0"><b>${r.stock.n} of ${esc(r.stock.pn)} already in stock</b> (${esc(r.stock.where)}). <a href="../stock/" style="color:inherit">Open Stock</a> to hold one for this job instead of ordering.</div>`:''}
    ${o?`<label class="row"><input type="checkbox" id="rq-ordered" data-reqcheck="1" ${r.ordered?'checked':''} style="width:auto"><span>This part has already been ordered</span></label>
     ${r.ordered?`<div class="fields"><label class="fld"><span>Vendor *</span><select id="rq-vendor" data-req="vendor"><option value="">Choose…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${r.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
      ${isOther(S.vendors.find(v=>v.id===r.vendor))?f('Vendor name *','other'):''}${f('Order number','order','','class="mono"')}${f('Tracking number','tracking','','class="mono"')}${f('Expected arrival','eta','','type="date"')}</div>
@@ -335,6 +337,11 @@ document.addEventListener('change',async e=>{const el=e.target;
   if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{}).vendor=el.value;render();return}
   if(el.dataset.reqcheck&&S.req){S.req.ordered=el.checked;renderDlg();return}
   if(el.dataset.req==='vendor'&&S.req){S.req.vendor=el.value;renderDlg();return}
+  /* Stock check: before a part goes to ordering, see whether one is already on a shelf or truck. */
+  if(el.dataset.req==='part_number'&&S.req){const r=S.req,pn=el.value.trim().toUpperCase();r.stock=null;if(!pn)return;
+    const {data}=await SB.from('stock_items').select('stock_locations(name)').eq('part_number',pn).eq('status','in_stock').neq('purpose','ebay').limit(200);
+    if(S.req===r&&data&&data.length){r.stock={pn,n:data.length,where:[...new Set(data.map(x=>x.stock_locations&&x.stock_locations.name).filter(Boolean))].join(', ')};renderDlg()}
+    return}
   if(el.dataset.vendor){const k=el.dataset.k,val=k==='return_days'?(el.value===''?null:Math.max(0,parseInt(el.value,10)||0)):(el.value.trim()||null);
     const {error}=await SB.from('vendors').update({[k]:val}).eq('id',el.dataset.vendor);
     if(error)toast(error.message,true);else{const v=S.vendors.find(x=>x.id===el.dataset.vendor);if(v)v[k]=val;toast('Saved.')}}});
