@@ -856,6 +856,35 @@ async function startSignedIn(){
        $("hcpChip").title=hcpOk?(h.company||""):("Key set: "+h.key_set+", HCP status: "+h.hcp_status); }
   catch(e){ hcpOk=false; $("hcpChip").textContent="HCP not connected"; $("hcpChip").className="hchip bad"; $("hcpChip").title=e.message; }
   renderLookup(); syncButtons(); if(window.Sched) Sched.sync();
+  woInit();
+}
+/* ---------- work order hand-off ----------
+   Work orders (../workorders/) opens this page with ?wo=<id>. Only that id travels in the address; the details are read
+   from the database after sign-in (office accounts only). The call is prefilled, and saving it as a job marks the work
+   order booked, so a work order cannot be booked without going through this guide. */
+const WO_ID=(new URLSearchParams(location.search).get("wo")||"").trim();
+function woBanner(html){ let b=$("woBanner"); if(!b){ b=document.createElement("div"); b.id="woBanner"; b.style.cssText="margin:12px 16px 0;padding:10px 12px;border-radius:8px;background:#e4ebfb;color:#1e3a8a;font-size:14px;line-height:1.4"; const wrap=document.querySelector(".wrap"); wrap.parentNode.insertBefore(b,wrap); } b.innerHTML=html; b.hidden=!html; }
+function woShow(){ const w=S.wo; if(!w){ woBanner(""); return; }
+  woBanner("<b>Work order "+esc(w.ref)+"</b> from "+esc(w.source)+(w.source_ref?" ("+esc(w.source_ref)+")":"")+(w.appliance?" · "+esc(w.appliance):"")+(w.nte!=null?" · do not exceed $"+esc(w.nte):"")
+    +(w.issue?"<div style=\"margin-top:4px\">Reported: "+esc(w.issue)+"</div>":"")
+    +"<div style=\"margin-top:4px;font-size:12px\">Name, phone and address are filled in from the work order. Confirm them with the customer and go through every question. Saving this as a job marks the work order booked.</div>"); }
+function woApply(w){
+  S=blank(); const nm=String(w.contact_name||"").trim().split(/\s+/).filter(Boolean);
+  S.cust={first:nm.length>1?nm.slice(0,-1).join(" "):(nm[0]||""),last:nm.length>1?nm[nm.length-1]:"",phone:fmtPhone(w.contact_phone||""),email:w.contact_email||"",
+    street:[w.street,w.unit].filter(Boolean).join(" "),cityTxt:w.city||"",zip:w.zip||""};
+  S.wo={id:w.id,ref:w.ref,source:w.source_name,source_ref:w.source_ref,appliance:w.appliance,issue:w.issue,nte:w.nte};
+  save(); render(); try{ autoCity(); }catch(e){} updateChecklist(); woShow(); renderLookup(); syncButtons();
+  const d=digits(S.cust.phone); if(d.length>=7) scheduleSearch(d);
+}
+async function woInit(){
+  if(!WO_ID||(S.wo&&S.wo.id===WO_ID)){ woShow(); return; }
+  const {data:w,error}=await SB.from("work_orders").select("id,ref,intake_id,source_name,source_ref,contact_name,contact_phone,contact_email,street,unit,city,zip,appliance,issue,nte").eq("id",WO_ID).maybeSingle();
+  if(error||!w){ woBanner("That work order could not be opened. Go back to Work orders and try again."); return; }
+  if(w.intake_id){ woBanner("Work order "+esc(w.ref)+" already has an intake linked, so nothing was filled in."); return; }
+  const busy=!(S.hcp&&S.hcp.saved)&&(Object.values(S.cust||{}).some(v=>String(v||"").trim())||(S.units||[]).some(u=>u.svc||u.app));
+  if(!busy){ woApply(w); return; }
+  woBanner("There is a call in progress on this screen. <button class=\"btn\" id=\"woStart\">Clear it and start work order "+esc(w.ref)+"</button> <button class=\"btn ghost\" id=\"woKeep\">Keep the current call</button>");
+  $("woStart").onclick=()=>woApply(w); $("woKeep").onclick=()=>woBanner("");
 }
 function goOffline(){ showLogin(false); online=false; document.body.classList.remove("online"); syncButtons(); renderLookup(); if(window.Sched) Sched.sync(); }
 
@@ -1157,11 +1186,18 @@ async function saveToHcp(kind){
     }
     h.saved={kind:kind==="job"?"job":"lead",id,number};
     save();
-    try{ await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}); }catch(e){}
+    let woNote="";
+    try{ const ins=await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}).select("id").single();
+      if(S.wo&&ins.data){
+        if(kind==="job"){ const u=await SB.from("work_orders").update({status:"booked",intake_id:ins.data.id,hcp_job_number:number?String(number):null}).eq("id",S.wo.id).is("intake_id",null).select("id");
+          woNote=(!u.error&&u.data&&u.data.length)?("Work order "+S.wo.ref+" is now marked booked."):("Work order "+S.wo.ref+" could not be marked booked automatically. Open it in Work orders and pick this intake from the list."); }
+        else { await SB.from("work_order_events").insert({work_order_id:S.wo.id,kind:"note",note:"Intake saved as a lead"+(number?" (#"+number+")":"")+", not booked yet."}); woNote="Work order "+S.wo.ref+" is still waiting to be booked: this call was saved as a lead, not a job."; }
+      } }catch(e){}
     msg.className="hmsg ok";
     const label=(kind==="job"?"Job":"Lead")+" #"+(number||"");
     msg.innerHTML='Saved to HCP: '+esc(label)+(kind==="job"?' (needs scheduling)':'')+'. <a href="'+esc(jobUrl(kind,id))+'" target="_blank" rel="noopener">Open in HCP</a>'+(warn?'<div style="font-size:12px;color:#b45309;margin-top:4px">'+esc(warn)+'</div>':'');
     showSaved(kind,label,id,warn);
+    if(woNote) woBanner("<b>"+esc(woNote)+"</b> <a href=\"../workorders/\">Back to Work orders</a>");
     renderLookup(); syncButtons();
   }catch(e){ msg.className="hmsg bad"; msg.textContent="Save failed: "+e.message; }
   finally{ setBusy(false); }
@@ -1218,7 +1254,7 @@ document.addEventListener("input",e=>{
     else if(c==="last"&&v.trim().length>=3&&digits(S.cust.phone).length<7) scheduleSearch(v.trim());
     else if(c==="street"&&v.trim().length>=6&&digits(S.cust.phone).length<7) scheduleSearch(v.trim()); }
 });
-$("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ const m=$("hcpMsg"); if(m){ m.textContent=""; m.className="hmsg"; } renderLookup(); syncButtons(); },0); });
+$("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ if(!S.wo){ woBanner(""); if(WO_ID) try{ history.replaceState(null,"",location.pathname); }catch(e){} } const m=$("hcpMsg"); if(m){ m.textContent=""; m.className="hmsg"; } renderLookup(); syncButtons(); },0); });
 ["reviewBtn","partialBtn"].forEach(id=>$(id).addEventListener("click",()=>{ if(online&&id==="reviewBtn"&&$("noteModal").classList.contains("show")) $("noteTitle").textContent="Review the note, then create the job in HCP"; const m=$("hcpMsg"); const h=hcpState(); if(m&&!h.saved){ m.textContent=""; m.className="hmsg"; } syncButtons();
   const isPartial=id==="partialBtn"; const j=$("saveJobBtn"); if(j) j.style.display=isPartial?"none":""; }));
 

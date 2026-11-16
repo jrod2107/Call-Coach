@@ -249,11 +249,13 @@ function bookSection(w){
   const used=new Set(S.rows.map(x=>x.intake_id).filter(Boolean));
   const list=S.intakes.filter(i=>i.outcome==='job'&&!used.has(i.id)).sort((a,b)=>intakeMatches(b,w)-intakeMatches(a,w));
   return `<div><h3>Book it</h3>
-    <p style="margin:6px 0">1. Contact them, then take the call through the intake guide like any other job. <a class="btn" href="../intake/" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px">Open the intake guide</a></p>
-    <p style="margin:6px 0">2. When the intake is saved as a job, come back and pick it here. This work order cannot be marked booked any other way.</p>
+    <p style="margin:6px 0">Contact them, then take the call through the intake guide. It opens with the name, phone and address from this work order already filled in, and saving it as a job marks this work order booked.</p>
+    <p style="margin:6px 0"><a class="btn primary" href="../intake/?wo=${w.id}" target="_blank" rel="noopener" style="text-decoration:none;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)">Start the intake for this work order</a></p>
+    <h3 style="margin-top:14px">Intake already done?</h3>
+    <p class="muted" style="margin:6px 0">If someone already took this call through the intake guide, pick that intake below to link it. This work order cannot be marked booked any other way.</p>
     <div class="row" style="margin:8px 0"><input data-f="hcp_job_number" value="${esc(S.edit.hcp_job_number)}" class="mono" placeholder="Housecall Pro job number" aria-label="Housecall Pro job number" style="width:210px"><span class="muted">optional, but it helps later</span></div>
     ${list.length?`<div class="hits">${list.slice(0,8).map(i=>{const m=intakeMatches(i,w),u=(i.units||[])[0]||{};return `<button class="hit" data-a="link" data-id="${w.id}" data-intake="${i.id}">${m?pill('Looks like a match','good')+' ':''}<b>${esc(intakeName(i))}</b> · ${esc(u.app||'')} · ${fmtWhen(i.created_at)}${i.csr?' · taken by '+esc(i.csr):''}</button>`}).join('')}</div>`
-      :'<p class="muted" style="margin:6px 0">No unlinked intakes saved as jobs in the last 10 days. Complete the intake first, then press Refresh.</p>'}</div>`;
+      :'<p class="muted" style="margin:6px 0">No unlinked intakes saved as jobs in the last 10 days.</p>'}</div>`;
 }
 function dWo(){
   const w=S.dlg.id?wo(S.dlg.id):null,E=S.edit;
