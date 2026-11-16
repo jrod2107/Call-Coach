@@ -144,6 +144,7 @@ async function load(){
   if(p.error||v.error)S.err=(p.error||v.error).message;else{S.err='';S.parts=p.data||[];S.vendors=(v.data||[]).sort((a,b)=>isOther(a)-isOther(b)||a.name.localeCompare(b.name))}
   render();if(S.dlg)renderDlg();
 }
+const locName=id=>((S.locs||[]).find(l=>l.id===id)||{}).name||'';
 async function upd(id,patch,msg){
   const {error}=await SB.from('parts').update(patch).eq('id',id);
   if(error){toast(error.message,true);return false}
@@ -211,7 +212,7 @@ function vMain(){
       <td><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''}<br><span class="muted">${esc(p.description)}</span></td>
       <td>#${esc(p.job_number)}<br><span class="muted">${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}</span></td>
       <td>${p.vendors?esc(vname(p)):'<span class="muted">Not ordered</span>'}${p.status==='need_to_order'&&sugText(p)?`<br>${pill('Suggested','info')} ${esc(sugText(p))}`:''}${p.po_number?`<br><span class="mono muted">PO ${esc(p.po_number)}</span>`:''}${p.vendor_order_no?`<br><span class="mono muted">Order ${esc(p.vendor_order_no)}</span>`:''}${p.tracking_number?`<br><span class="mono muted">${esc(p.tracking_number)}</span>`:''}</td>
-      <td>${pill(LABEL[p.status],TONE[p.status])} ${flags(p)}${p.eta&&['ordered','shipped'].includes(p.status)?`<br><span class="muted">ETA ${fmtDate(p.eta)}</span>`:''}${p.requested_by_name?`<br><span class="muted">Requested by ${esc(p.requested_by_name)}</span>`:''}</td>
+      <td>${pill(LABEL[p.status],TONE[p.status])} ${flags(p)}${p.eta&&['ordered','shipped'].includes(p.status)?`<br><span class="muted">ETA ${fmtDate(p.eta)}</span>`:''}${p.status==='received'&&locName(p.location_id)?`<br><span class="muted">At ${esc(locName(p.location_id))}${p.bin?' · '+esc(p.bin):''}</span>`:''}${p.requested_by_name?`<br><span class="muted">Requested by ${esc(p.requested_by_name)}</span>`:''}</td>
       <td class="act">${rowActions(p)}</td></tr>`).join('')}</tbody></table></div>`
      :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':'Nothing in this queue.'}</div>`}</div>
   </div>`}
@@ -227,6 +228,7 @@ function dPart(p){
     <label class="fld"><span>Vendor</span><select id="pf-vendor_id" ${ro}><option value="">Not chosen</option>${S.vendors.map(v=>`<option value="${v.id}" ${p.vendor_id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
     ${f('Vendor name, if Other','vendor_other')}${f('PO number','po_number','','class="mono"')}${f('Vendor order number','vendor_order_no','','class="mono"')}${f('Tracking number','tracking_number','','class="mono"')}
     ${f('Expected arrival','eta','','type="date"')}${f('List price','list_price','','type="number" step="0.01" min="0"')}${f('Our cost','cost','','type="number" step="0.01" min="0"')}${f('Sell price','sell_price','','type="number" step="0.01" min="0"')}
+    <label class="fld"><span>Where it is</span><select id="pf-location_id"><option value="">Not set</option>${S.locs.filter(l=>l.active||l.id===p.location_id).map(l=>`<option value="${l.id}" ${p.location_id===l.id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></label>
     ${f('Shelf or bin','bin')}
     <label class="fld wide"><span>Notes</span><textarea id="pf-notes">${esc(p.notes)}</textarea></label></div>
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
@@ -321,7 +323,7 @@ const A={
   print:d=>printTag(part(d.id)),
   save:async d=>{const p=part(d.id),v=k=>{const el=$('pf-'+k);return el?el.value.trim():''},n=k=>v(k)===''?null:Number(v(k));
     const patch=office()?{description:v('description'),qty:Math.max(1,parseInt(v('qty'),10)||1),vendor_id:v('vendor_id')||null,vendor_other:v('vendor_other')||null,po_number:v('po_number')||null,vendor_order_no:v('vendor_order_no')||null,
-      tracking_number:v('tracking_number')||null,eta:v('eta')||null,list_price:n('list_price'),cost:n('cost'),sell_price:n('sell_price'),bin:v('bin')||null,notes:v('notes')||null}:{notes:v('notes')||null};
+      tracking_number:v('tracking_number')||null,eta:v('eta')||null,list_price:n('list_price'),cost:n('cost'),sell_price:n('sell_price'),bin:v('bin')||null,notes:v('notes')||null,location_id:v('location_id')||null}:{notes:v('notes')||null,location_id:v('location_id')||null};
     if(office()&&patch.tracking_number&&!p.tracking_number&&['ordered','backordered'].includes(p.status))patch.status='shipped';
     if(await upd(p.id,patch,patch.status==='shipped'?'Saved. Tracking added, so the part moved to Shipped.':'Saved.'))closeDlg()},
   hsearch:async()=>{const r=S.req,q=(r.hq||'').trim();if(q.length<2){r.msg='Type at least two letters or digits.';renderDlg();return}
