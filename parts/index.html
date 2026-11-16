@@ -186,7 +186,7 @@ function vMain(){
   const q=S.q.trim().toLowerCase();
   const match=p=>!q||[p.tag,p.job_number,p.customer_name,p.part_number,p.description,p.po_number,p.vendor_order_no,p.tracking_number,vname(p)].join(' ').toLowerCase().includes(q);
   const cur=TABS.find(t=>t[0]===S.tab),rows=S.parts.filter(p=>cur[2].includes(p.status)&&match(p));
-  return `<header class="top"><h1>Parts Desk</h1>
+  return `<header class="top"><a href="../home/" style="color:inherit;text-decoration:none;opacity:.9" aria-label="Back to Home">← Home</a><h1>Parts Desk</h1>
    <input id="q" type="search" placeholder="Search tag, job, customer, part or PO" value="${esc(S.q)}" aria-label="Search parts">
    <span class="grow"></span>
    <button class="primary" data-a="request">+ Request a part</button>

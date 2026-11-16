@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Appliance — Home</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
+  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af;
+  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff;
+  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17;
+  color-scheme:dark } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:700}
+h1{font-size:18px} h2{font-size:22px}
+h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.muted{color:var(--muted)} .grow{flex:1}
+.top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.top .who{font-size:12px;opacity:.9}
+.wrap{max-width:1080px;margin:0 auto;padding:22px 16px 60px}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.top button{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:2px}
+.stat:hover,.tile:hover{border-color:var(--accent-text)}
+.stat b{font-size:28px;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)} .stat.good b{color:var(--good)}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-decoration:none;color:var(--ink);display:flex;flex-direction:column;gap:3px}
+.tile b{font-size:15px;color:var(--accent-text)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px 12px;background:var(--sunk);white-space:nowrap}
+td{padding:9px 12px;border-top:1px solid var(--line)}
+td select{width:150px}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld>span{font-size:12px;color:var(--muted);font-weight:600}
+.notice{background:var(--bad-bg);color:var(--bad);border-radius:var(--r);padding:9px 11px;margin:10px 0}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
+#toast.bad{background:var(--bad);color:#fff}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Home: one page per role. It only reads data the signed-in person may already see (row-level security decides),
+   and shows the tools that role can open. First version: Parts desk and intake numbers. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today=()=>new Date().toLocaleDateString('en-CA');
+const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5);
+const ROLES=['admin','csr','tech','pending'];
+const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',pending:'Waiting for access'};
+const TOOLS=[
+  {href:'../parts/',name:'Parts desk',desc:'Request, order, receive and return parts.',roles:['admin','csr','tech']},
+  {href:'../intake/',name:'Call intake',desc:'Take a call and book it into Housecall Pro.',roles:['admin','csr']},
+  {href:'../desk/',name:'Call Desk',desc:'Answers to customer and policy questions.',roles:['admin','csr']},
+  {href:'../',name:'Call Coach',desc:'Live coaching during calls.',roles:['admin','csr']}
+];
+const S={session:null,me:null,parts:[],intakes:[],team:[],loading:false,err:''};
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
+
+async function whoami(){
+  const {data}=await SB.from('profiles').select('id,display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+}
+async function load(){
+  S.loading=true;render();
+  const since=new Date(Date.now()-7*864e5).toISOString();
+  const jobs=[SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
+  if(office())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
+  if(S.me.role==='admin')jobs.push(SB.from('profiles').select('id,display_name,email,role').order('email'));
+  const res=await Promise.all(jobs);
+  S.loading=false;
+  const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
+  S.parts=res[0].data||[];
+  S.intakes=office()&&res[1]?res[1].data||[]:[];
+  S.team=S.me.role==='admin'&&res[2]?res[2].data||[]:[];
+  render();
+}
+
+const stat=(n,label,tone,href)=>`<a class="stat ${n?tone||'':''}" href="${href}"><b>${n}</b><span>${label}</span></a>`;
+function vAttention(){
+  const P=S.parts,n=f=>P.filter(f).length,mine=p=>p.requested_by===S.me.id;
+  if(office()){
+    const weekJobs=S.intakes.filter(i=>i.outcome==='job').length,weekLeads=S.intakes.filter(i=>i.outcome!=='job').length;
+    return `<h3>Needs attention</h3><div class="grid">
+      ${stat(n(p=>p.status==='need_to_order'),'Parts waiting to be ordered','warn','../parts/')}
+      ${stat(n(p=>['ordered','shipped'].includes(p.status)&&p.eta&&daysUntil(p.eta)<0),'Orders past their arrival date','bad','../parts/')}
+      ${stat(n(p=>p.status==='backordered'),'Backordered with no ETA','bad','../parts/')}
+      ${stat(n(p=>p.status==='received'),'Parts received, not yet installed','good','../parts/')}
+      ${stat(n(p=>p.status==='received'&&p.return_by&&daysUntil(p.return_by)<=7),'Return windows closing within a week','warn','../parts/')}
+      ${stat(n(p=>p.status==='returned'),'Returns still waiting on credit','warn','../parts/')}</div>
+     <h3>Calls taken in the last 7 days</h3><div class="grid">
+      ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../intake/')}</div>`;
+  }
+  return `<h3>Your parts</h3><div class="grid">
+    ${stat(n(p=>p.status==='received'),'Parts in and ready for a job','good','../parts/')}
+    ${stat(n(p=>mine(p)&&p.status==='need_to_order'),'Your requests waiting to be ordered','warn','../parts/')}
+    ${stat(n(p=>mine(p)&&['ordered','backordered','shipped'].includes(p.status)),'Your requests on the way','','../parts/')}</div>`;
+}
+function vTeam(){
+  if(S.me.role!=='admin')return'';
+  return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>
+   ${S.team.map(u=>`<tr><td><input data-user="${u.id}" data-k="display_name" value="${esc(u.display_name)}" placeholder="Name shown to the team" aria-label="Name for ${esc(u.email)}"></td><td>${esc(u.email)}</td>
+     <td>${u.id===S.me.id?esc(ROLE_NAME[u.role])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table></div>
+   <p class="muted" style="margin-top:8px">New accounts are created in the Supabase dashboard and start as "Waiting for access". Set the role here to let someone in.</p>`;
+}
+function vHome(){
+  const first=(S.me.display_name||'').split(' ')[0];
+  return `<header class="top"><h1>City Appliance</h1><span class="grow"></span>
+    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
+    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[S.me.role]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
+  <div class="wrap"><h2>${first?'Hi, '+esc(first):'Home'}</h2><p class="muted">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
+   ${S.err?`<div class="notice">Some numbers could not be loaded: ${esc(S.err)}</div>`:''}
+   ${vAttention()}
+   <h3>Tools</h3><div class="grid">${TOOLS.filter(t=>t.roles.includes(S.me.role)).map(t=>`<a class="tile" href="${t.href}"><b>${t.name}</b><span class="muted">${t.desc}</span></a>`).join('')}</div>
+   ${vTeam()}</div>`;
+}
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
+  <p class="muted">Sign in with the same email and password you use for Call Desk.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given a role yet. Ask Jake to set it.</p>
+  <button data-a="signout">Sign out</button></div>`}
+function render(){
+  $('app').innerHTML=!SB?'<div class="card"><h2>Home</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vWaiting():vHome();
+}
+
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
+  if(el.dataset.a==='refresh')load();
+  if(el.dataset.a==='signout'){await SB.auth.signOut();location.reload()}});
+document.addEventListener('change',async e=>{const el=e.target;if(!el.dataset.user)return;
+  const k=el.dataset.k,val=el.value.trim(),u=S.team.find(x=>x.id===el.dataset.user);
+  const {error}=await SB.from('profiles').update({[k]:val}).eq('id',el.dataset.user);
+  if(error){toast(error.message,true);if(u)el.value=u[k]||'';return}
+  if(u)u[k]=val;toast(k==='role'?`${u&&u.email?u.email:'Account'} is now ${ROLE_NAME[val]}.`:'Name saved.')});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(allowed())load()});
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&allowed())load();
+})();
+</script>
+</body>
+</html>
