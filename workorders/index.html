@@ -137,7 +137,7 @@ const TABS=[
   ['closed','Cancelled',w=>w.status==='cancelled']];
 const BLANK={source_kind:'property_manager',source_name:'',source_ref:'',received_via:'email',received_on:'',portal_note:'',contact_name:'',contact_phone:'',contact_phone2:'',contact_email:'',
   street:'',unit:'',city:'',zip:'',appliance:'',issue:'',original_text:'',nte:'',notes:'',approval:'not_needed',approval_amount:'',invoice_number:'',invoice_amount:'',invoice_sent_on:'',paid_on:'',portal_updated:false,hcp_job_number:''};
-const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false};
+const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null}};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const wo=id=>S.rows.find(w=>w.id===id);
 const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
@@ -226,7 +226,20 @@ function vMain(){
 function fld(label,k,attrs,cls){return `<label class="fld ${cls||''}"><span>${label}</span><input data-f="${k}" value="${esc(S.edit[k])}" ${attrs||''}></label>`}
 function sel(label,k,map){return `<label class="fld"><span>${label}</span><select data-f="${k}">${opts(map,S.edit[k])}</select></label>`}
 function area(label,k,ph,rows){return `<label class="fld wide"><span>${label}</span><textarea data-f="${k}" placeholder="${esc(ph||'')}" style="min-height:${rows||64}px">${esc(S.edit[k])}</textarea></label>`}
-function basics(){
+/* Reads a pasted email and/or an attached PDF with the work-order-read function and fills in the form.
+   Nothing is saved until the person checks the fields and presses Save. */
+function importPanel(){
+  const i=S.imp;
+  return `<div class="panel" style="padding:12px;background:var(--sunk)"><h3>Fill in from the email</h3>
+    <p class="muted" style="margin:6px 0">Paste the whole email below, attach the PDF if it came with one, then press the button. Check every field afterwards: it reads well, but it can get things wrong.</p>
+    <textarea data-f="original_text" placeholder="Paste the email here" style="min-height:90px">${esc(S.edit.original_text)}</textarea>
+    <div class="row" style="margin-top:8px"><input type="file" id="impfile" accept="application/pdf,image/jpeg,image/png,image/webp" style="max-width:260px">
+     ${i.file?`<span class="muted">Attached: ${esc(i.file.name)}. It will be saved with the work order.</span>`:''}
+     <span class="grow"></span><button class="primary" data-a="readwo">${i.busy?'Reading…':'Read it and fill in the form'}</button></div>
+    ${i.msg?`<div class="notice ${i.tone}" style="margin-top:8px">${esc(i.msg)}</div>`:''}</div>`;
+}
+const fileB64=file=>new Promise((ok,bad)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>bad(new Error('Could not read that file.'));r.readAsDataURL(file)});
+function basics(isNew){
   return `<div><h3>Who sent it</h3><div class="fields" style="margin-top:6px">
     ${fld('Company *','source_name','placeholder="e.g. 3Z, a warranty company, a property manager" list="srcs"')}<datalist id="srcs">${[...new Set(S.rows.map(w=>w.source_name))].sort().map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     ${sel('Kind','source_kind',KIND)}${fld('Their work order or claim number','source_ref','class="mono"')}
@@ -237,7 +250,7 @@ function basics(){
     ${fld('Street address','street')}${fld('Apt or unit','unit')}${fld('City','city')}${fld('ZIP','zip','inputmode="numeric"')}</div></div>
    <div><h3>What they reported</h3><div class="fields" style="margin-top:6px">
     ${fld('Appliance','appliance','placeholder="e.g. Whirlpool dryer"')}${area('Problem as they described it','issue','',56)}
-    ${area('Original email or message, pasted in full','original_text','Paste the whole email here so nothing is lost. If it came as a PDF, attach the file after saving.',90)}
+    ${isNew?'':area('Original email or message, pasted in full','original_text','Paste the whole email here so nothing is lost.',90)}
     ${area('Our notes','notes','',48)}</div></div>`;
 }
 function intakeName(i){const c=i.customer||{};return [c.first,c.last].filter(Boolean).join(' ')||'(no name)'}
@@ -260,7 +273,7 @@ function bookSection(w){
 function dWo(){
   const w=S.dlg.id?wo(S.dlg.id):null,E=S.edit;
   if(!w)return `<div class="dhead"><h2>New work order</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
-   <div class="dbody">${basics()}</div>
+   <div class="dbody">${importPanel()}${basics(true)}</div>
    <div class="dfoot"><button data-a="close">Cancel</button><button class="primary" data-a="create">${S.busy?'Saving…':'Save work order'}</button></div>`;
   return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody">
@@ -301,7 +314,7 @@ const A={
   refresh:()=>load(),
   signout:async()=>{await SB.auth.signOut();location.reload()},
   close:()=>closeDlg(),
-  new:()=>{S.edit=Object.assign({},BLANK,{received_on:today()});S.dlg={type:'wo',id:null};renderDlg()},
+  new:()=>{S.imp={busy:false,msg:'',tone:'',file:null};S.edit=Object.assign({},BLANK,{received_on:today()});S.dlg={type:'wo',id:null};renderDlg()},
   open:d=>{const w=wo(d.id);S.edit=Object.assign({},BLANK,Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v==null?'':v])));S.events=[];S.files=[];S.evnote='';S.dlg={type:'wo',id:d.id};renderDlg();loadDetail(d.id)},
   create:async()=>{if(S.busy)return;const row=cleaned();
     if(!row.source_name){toast('Type the company that sent it.',true);return}
@@ -312,7 +325,31 @@ const A={
     const {data,error}=await SB.from('work_orders').insert(row).select('*').single();
     S.busy=false;S.dupOk=null;
     if(error){toast(error.message,true);renderDlg();return}
-    toast(`${data.ref} saved. It is under To book.`);S.tab='tobook';await load();A.open({id:data.id})},
+    toast(`${data.ref} saved. It is under To book.`);S.tab='tobook';const att=S.imp.file;S.imp={busy:false,msg:'',tone:'',file:null};await load();A.open({id:data.id});
+    if(att)upload({files:[att],dataset:{id:data.id},value:''})},
+  readwo:async()=>{const i=S.imp,E=S.edit;if(i.busy)return;
+    const text=String(E.original_text||'').trim();if(!text&&!i.file){toast('Paste the email or attach the PDF first.',true);return}
+    i.busy=true;i.msg='';renderDlg();
+    try{
+      const files=i.file?[{media_type:i.file.type||'application/pdf',data:await fileB64(i.file)}]:[];
+      const r=await fetch(CFG.supabaseUrl+'/functions/v1/work-order-read',{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:JSON.stringify({text,files})});
+      let j=null;try{j=await r.json()}catch(e){}
+      if(!r.ok||!j||!j.data)throw new Error((j&&j.error)||('Error '+r.status));
+      const d=j.data;
+      if(d.is_work_order===false){i.tone='';i.msg='This does not look like a new work order. '+(d.summary||'')+(d.source_ref?' It refers to work order '+d.source_ref+'.':'')+' Nothing was filled in.'}
+      else{const put=(k,v)=>{if(v!=null&&String(v).trim()!=='')E[k]=String(v).trim()},c=Array.isArray(d.contacts)?d.contacts:[],c1=c[0]||{},c2=c[1]||{};
+        put('source_name',d.source_name);if(KIND[d.source_kind])E.source_kind=d.source_kind;put('source_ref',d.source_ref);
+        E.received_via=i.file&&i.file.type==='application/pdf'?'pdf':'email';
+        if(d.portal)put('portal_note',d.portal+': update the work order there to get paid');
+        put('contact_name',c1.name);put('contact_phone',c1.phone);put('contact_email',c1.email);put('contact_phone2',c2.phone);
+        put('street',d.street);put('unit',d.unit);put('city',d.city);put('zip',d.zip);put('appliance',d.appliance);put('issue',d.issue);if(d.nte!=null&&d.nte!=='')E.nte=d.nte;
+        const extra=[c.slice(1).map(x=>'Also on the work order: '+[x.name,x.phone,x.email].filter(Boolean).join(', ')).join('\n'),d.availability?'Availability they gave: '+d.availability:'',d.entry_notes?'Entry: '+d.entry_notes:''].filter(Boolean).join('\n');
+        if(extra)E.notes=[String(E.notes||'').trim(),extra].filter(Boolean).join('\n');
+        const un=Array.isArray(d.unsure)?d.unsure.filter(Boolean):[];
+        i.tone=un.length?'':'good';i.msg='Filled in from the '+(i.file?'attachment':'email')+'. Check every field before saving.'+(un.length?' It was not sure about: '+un.join(', ')+'.':'')}
+    }catch(e){i.tone='bad';i.msg='Could not read it: '+e.message+' You can still type the details in.'}
+    i.busy=false;renderDlg()},
   save:async d=>{if(S.busy)return;const E=S.edit,w=wo(d.id),row=cleaned();
     if(!row.source_name){toast('The company that sent it cannot be blank.',true);return}
     Object.assign(row,{approval:E.approval,approval_amount:numOrNull(E.approval_amount),invoice_number:String(E.invoice_number||'').trim()||null,invoice_amount:numOrNull(E.invoice_amount),
@@ -356,6 +393,7 @@ document.addEventListener('input',e=>{const el=e.target;
   if(el.dataset.ev)S.evnote=el.value});
 document.addEventListener('change',e=>{const el=e.target;
   if(el.dataset.fc&&S.edit)S.edit[el.dataset.fc]=el.checked;
+  if(el.id==='impfile'){const f=el.files[0];if(f&&f.size>10*1024*1024){toast('That file is over 10 MB.',true);el.value='';return}S.imp.file=f||null;renderDlg()}
   if(el.id==='upfile')upload(el)});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
