@@ -73,8 +73,7 @@ const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',pending:'Waiting f
 const TOOLS=[
   {href:'../parts/',name:'Parts desk',desc:'Request, order, receive and return parts.',roles:['admin','csr','tech']},
   {href:'../intake/',name:'Call intake',desc:'Take a call and book it into Housecall Pro.',roles:['admin','csr']},
-  {href:'../desk/',name:'Call Desk',desc:'Answers to customer and policy questions.',roles:['admin','csr']},
-  {href:'../',name:'Call Coach',desc:'Live coaching during calls.',roles:['admin','csr']}
+  {href:'../desk/#tag',name:'Model number finder',desc:'Where to find the model and serial tag on each appliance.',roles:['admin','csr']}
 ];
 const S={session:null,me:null,parts:[],intakes:[],team:[],loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
