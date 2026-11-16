@@ -76,10 +76,11 @@ const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',stock:'Stock helpe
 const TOOLS=[
   {href:'../parts/',name:'Parts desk',desc:'Request, order, receive and return parts.',roles:['admin','csr','tech']},
   {href:'../stock/',name:'Stock',desc:'Scan parts in, hold them for jobs, restock and eBay lists.',roles:['admin','csr','tech','stock']},
+  {href:'../workorders/',name:'Work orders',desc:'Warranty and property-manager jobs: contact, book through intake, track approval and payment.',roles:['admin','csr']},
   {href:'../intake/',name:'Call intake',desc:'Take a call and book it into Housecall Pro.',roles:['admin','csr']},
   {href:'../desk/#tag',name:'Model number finder',desc:'Where to find the model and serial tag on each appliance.',roles:['admin','csr']}
 ];
-const S={session:null,me:null,parts:[],intakes:[],team:[],loading:false,err:''};
+const S={session:null,me:null,parts:[],wos:[],intakes:[],team:[],loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
 
@@ -100,6 +101,7 @@ async function load(){
   S.loading=false;
   const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
   S.parts=res[0].data||[];
+  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[]}
   S.intakes=office()&&res[1]?res[1].data||[]:[];
   S.team=S.me.role==='admin'&&res[2]?res[2].data||[]:[];
   render();
@@ -117,6 +119,10 @@ function vAttention(){
       ${stat(n(p=>p.status==='received'),'Parts received, not yet installed','good','../parts/')}
       ${stat(n(p=>p.status==='received'&&p.return_by&&daysUntil(p.return_by)<=7),'Return windows closing within a week','warn','../parts/')}
       ${stat(n(p=>p.status==='returned'),'Returns still waiting on credit','warn','../parts/')}</div>
+     <h3>Work orders from warranty companies and property managers</h3><div class="grid">
+      ${stat(S.wos.filter(w=>['new','contacting'].includes(w.status)).length,'Waiting to be contacted and booked','warn','../workorders/')}
+      ${stat(S.wos.filter(w=>['new','contacting','booked'].includes(w.status)&&['needed','requested'].includes(w.approval)).length,'Waiting on approval','warn','../workorders/')}
+      ${stat(S.wos.filter(w=>w.status!=='cancelled'&&w.invoice_sent_on&&!w.paid_on).length,'Invoiced and not paid yet','warn','../workorders/')}</div>
      <h3>Calls taken in the last 7 days</h3><div class="grid">
       ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../intake/')}</div>`;
   }

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#1e40af">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<title>City Appliance — Work Orders</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
+  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
+  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
+  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
+  color-scheme:dark } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:700}
+h1{font-size:18px} h2{font-size:16px} h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:13px} .muted{color:var(--muted)} .num{text-align:right;font-variant-numeric:tabular-nums}
+.grow{flex:1}
+.top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.top .who{font-size:12px;opacity:.9}
+.top a{color:inherit;text-decoration:none;opacity:.9}
+.wrap{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
+button,.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent-text)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.small{padding:4px 9px;font-size:13px}
+button.big{padding:12px 16px;font-size:16px}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.top button{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+.top button.primary{background:#fff;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%;min-width:0}
+textarea{min-height:56px;resize:vertical}
+.top input,.top select{max-width:260px;background:#fff;color:#171a1e;border-color:transparent}
+.top select{max-width:170px}
+.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin:4px 0 14px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:9px 12px}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--accent-text)}
+.tabs .n{font-size:12px;padding:0 6px;border-radius:99px;background:var(--sunk);color:var(--ink);font-variant-numeric:tabular-nums}
+.tabs .n.hot{background:var(--warn-bg);color:var(--warn)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px 12px;background:var(--sunk);white-space:nowrap}
+th.num{text-align:right}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr[data-a]{cursor:pointer} tbody tr[data-a]:hover{background:var(--sunk)}
+td .mono{white-space:nowrap}
+td.act{white-space:nowrap;text-align:right}
+td.act input{width:86px;display:inline-block}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.info{background:var(--info-bg);color:var(--info)}
+.empty{padding:22px;color:var(--muted);text-align:center}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:9px 11px}
+.notice.bad{background:var(--bad-bg);color:var(--bad)} .notice.good{background:var(--good-bg);color:var(--good)} .notice.info{background:var(--info-bg);color:var(--info)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld>span{font-size:12px;color:var(--muted);font-weight:600}
+.fld.wide{grid-column:1/-1}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sum{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 12px;color:var(--muted)} .sum b{color:var(--ink)}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,96vw);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.dbody{padding:16px;display:flex;flex-direction:column;gap:14px}
+.dfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+#reader{width:100%;max-width:520px;margin:0 auto;border-radius:var(--r);overflow:hidden;background:#000}
+/* The scanner measures this box when it starts, so it must never be display:none or zero wide. */
+#reader video{width:100%!important;height:auto!important;display:block}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
+#toast.bad{background:var(--bad);color:#fff}
+#print{display:none}
+@media (max-width:640px){ input,select,textarea{font-size:16px} .wrap{padding:10px 10px 60px} td,th{padding:8px} }
+@media print{
+  @page{size:2.25in 1.25in;margin:0}
+  body{background:#fff} body>*:not(#print){display:none!important}
+  #print{display:block}
+  .label{width:2.25in;height:1.25in;padding:.06in .08in;color:#000;font:8pt/1.15 Arial,Helvetica,sans-serif;display:flex;flex-direction:column;overflow:hidden;page-break-after:always}
+  .label .l1{display:flex;justify-content:space-between;font-weight:700;font-size:10pt}
+  .label .l2{font-family:Menlo,Consolas,monospace;font-size:9pt;font-weight:700}
+  .label svg{width:100%;height:.36in;margin:.02in 0}
+  .label .l4{font-size:7pt}
+}
+.hits{display:flex;flex-direction:column;gap:6px}
+.hit{text-align:left;white-space:normal;font-weight:400}
+td a{color:var(--accent-text)}
+details>summary{color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Work orders v1. Tables: work_orders, work_order_events, work_order_files (see supabase/migrations/*work_orders_v1.sql).
+   Jobs sent to us by warranty companies, property managers and manufacturers start here as leads.
+   A work order can only be marked booked by linking the intake a CSR completed for it (the database enforces that),
+   so the intake guide is never skipped. The same record then tracks approval, invoice and payment. Office only. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>n==null||n===''?'':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>new Date().toLocaleDateString('en-CA');
+const fmtDate=iso=>iso?new Date(String(iso).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+const fmtWhen=iso=>iso?new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+const daysSince=iso=>Math.max(0,Math.round((new Date(today()+'T12:00:00')-new Date(String(iso).slice(0,10)+'T12:00:00'))/864e5));
+const numOrNull=v=>{v=String(v==null?'':v).trim();if(v==='')return null;const n=Number(v);return isFinite(n)&&n>=0?n:null};
+const digits=s=>String(s||'').replace(/\D/g,'').slice(-10);
+
+const KIND={property_manager:'Property manager',warranty:'Warranty company',oem:'Manufacturer',other:'Other'};
+const VIA={email:'Email',pdf:'Email with PDF',portal:'Their portal',phone:'Phone',other:'Other'};
+const APPROVAL={not_needed:'Not needed',needed:'Needed, not asked yet',requested:'Asked, waiting',approved:'Approved',denied:'Denied'};
+const EV={call:'Called',voicemail:'Left voicemail',text:'Texted',email:'Emailed',note:'Note',status:''};
+const OPEN=['new','contacting','booked'];
+const TABS=[
+  ['tobook','To book',w=>['new','contacting'].includes(w.status)],
+  ['booked','Booked',w=>w.status==='booked'&&!w.invoice_sent_on],
+  ['approval','Waiting on approval',w=>OPEN.includes(w.status)&&['needed','requested'].includes(w.approval)],
+  ['unpaid','Invoiced, not paid',w=>w.status!=='cancelled'&&w.invoice_sent_on&&!w.paid_on],
+  ['paid','Paid',w=>!!w.paid_on],
+  ['closed','Cancelled',w=>w.status==='cancelled']];
+const BLANK={source_kind:'property_manager',source_name:'',source_ref:'',received_via:'email',received_on:'',portal_note:'',contact_name:'',contact_phone:'',contact_phone2:'',contact_email:'',
+  street:'',unit:'',city:'',zip:'',appliance:'',issue:'',original_text:'',nte:'',notes:'',approval:'not_needed',approval_amount:'',invoice_number:'',invoice_amount:'',invoice_sent_on:'',paid_on:'',portal_updated:false,hcp_job_number:''};
+const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false};
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const wo=id=>S.rows.find(w=>w.id===id);
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+const opts=(map,cur)=>Object.entries(map).map(([k,l])=>`<option value="${k}" ${cur===k?'selected':''}>${esc(l)}</option>`).join('');
+const addr=w=>[[w.street,w.unit].filter(Boolean).join(' '),w.city,w.zip].filter(Boolean).join(', ');
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4200)}
+
+/* ---------- data ---------- */
+async function whoami(){
+  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+}
+async function load(){
+  S.loading=true;render();
+  const since=new Date(Date.now()-10*864e5).toISOString();
+  const [w,e,i]=await Promise.all([
+    SB.from('work_orders').select('*').order('received_on',{ascending:true}).order('created_at',{ascending:true}).limit(1000),
+    SB.from('work_order_events').select('work_order_id,at,kind,note').neq('kind','status').order('at',{ascending:false}).limit(1000),
+    SB.from('intakes').select('id,created_at,csr,outcome,customer,units,hcp_job_id').gte('created_at',since).order('created_at',{ascending:false}).limit(200)]);
+  S.loading=false;
+  const bad=[w,e,i].find(r=>r.error);
+  if(bad)S.err=bad.error.message;else{S.err='';S.rows=w.data||[];S.intakes=i.data||[];S.last={};for(const ev of (e.data||[]))if(!S.last[ev.work_order_id])S.last[ev.work_order_id]=ev}
+  render();if(S.dlg&&S.dlg.type==='wo'&&S.dlg.id)renderDlg();
+}
+async function loadDetail(id){
+  const [e,f]=await Promise.all([
+    SB.from('work_order_events').select('*').eq('work_order_id',id).order('at',{ascending:false}),
+    SB.from('work_order_files').select('*').eq('work_order_id',id).order('created_at')]);
+  if(S.dlg&&S.dlg.id===id){S.events=e.data||[];S.files=f.data||[];renderDlg()}
+}
+async function upd(id,patch,msg){
+  const {error}=await SB.from('work_orders').update(patch).eq('id',id);
+  if(error){toast(/booked_needs_intake/.test(error.message)?'A work order can only be booked or closed after its intake is linked.':error.message,true);return false}
+  if(msg)toast(msg);await load();return true;
+}
+
+/* ---------- views ---------- */
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance Work Orders</h2>
+  <p class="muted">Sign in with the same email and password you use for Call Desk.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vWaiting(){return `<div class="card"><h2>Office only</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}. Work orders hold customer and tenant details, so only office accounts can open them.</p>
+  <a class="btn" href="../home/" style="text-align:center;text-decoration:none">Back to Home</a><button data-a="signout">Sign out</button></div>`}
+function stageCell(w){
+  const out=[];
+  if(w.status==='new')out.push(pill('Not contacted yet','warn'));
+  if(w.status==='contacting')out.push(pill('Trying to reach them','info'));
+  if(w.status==='booked')out.push(pill('Booked'+(w.hcp_job_number?' · job #'+w.hcp_job_number:''),'good'));
+  if(w.status==='done')out.push(pill('Closed',''));
+  if(w.status==='cancelled')out.push(pill('Cancelled',''));
+  if(['needed','requested'].includes(w.approval))out.push(pill('Approval: '+APPROVAL[w.approval].toLowerCase(),'warn'));
+  if(w.approval==='denied')out.push(pill('Approval denied','bad'));
+  if(w.invoice_sent_on&&!w.paid_on){const d=daysSince(w.invoice_sent_on);out.push(pill(`Invoiced ${d} day${d===1?'':'s'} ago`,d>=30?'bad':'warn'))}
+  if(w.paid_on)out.push(pill('Paid '+fmtDate(w.paid_on),'good'));
+  if(w.portal_note&&!w.portal_updated&&['booked','done'].includes(w.status))out.push(pill('Their portal needs updating','warn'));
+  return out.join(' ');
+}
+function vMain(){
+  const q=S.q.trim().toLowerCase();
+  const match=w=>!q||[w.ref,w.source_name,w.source_ref,w.contact_name,w.contact_phone,w.contact_phone2,addr(w),w.appliance,w.issue,w.hcp_job_number,w.invoice_number].join(' ').toLowerCase().includes(q);
+  const cur=TABS.find(t=>t[0]===S.tab),rows=S.rows.filter(w=>cur[2](w)&&match(w));
+  return `<header class="top"><a href="../home/" aria-label="Back to Home">← Home</a><h1>Work Orders</h1>
+   <input id="q" type="search" placeholder="Search name, phone, address, company or number" value="${esc(S.q)}" aria-label="Search work orders">
+   <span class="grow"></span>
+   <button class="primary" data-a="new">+ New work order</button>
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load work orders: ${esc(S.err)}</div>`:''}
+   <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['tobook','approval','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Number</th><th>Sent by</th><th>Who to contact</th><th>Appliance and problem</th><th>Where it stands</th></tr></thead><tbody>
+    ${rows.map(w=>{const lc=S.last[w.id],d=daysSince(w.received_on);return `<tr data-a="open" data-id="${w.id}">
+      <td class="mono">${esc(w.ref)}</td>
+      <td>${esc(w.source_name)}<br><span class="muted">${esc(KIND[w.source_kind])}${w.source_ref?' · '+esc(w.source_ref):''}</span></td>
+      <td>${esc(w.contact_name||'No name')}${w.contact_phone?`<br><a href="tel:${esc(digits(w.contact_phone))}">${esc(w.contact_phone)}</a>`:''}${addr(w)?`<br><span class="muted">${esc(addr(w))}</span>`:''}</td>
+      <td>${esc(w.appliance||'')}${w.issue?`<br><span class="muted">${esc(String(w.issue).slice(0,110))}${String(w.issue).length>110?'…':''}</span>`:''}</td>
+      <td>${stageCell(w)}${['new','contacting'].includes(w.status)?`<br><span class="muted">Received ${d===0?'today':d+' day'+(d===1?'':'s')+' ago'}${lc?' · last: '+esc((EV[lc.kind]||'Note').toLowerCase())+' '+fmtWhen(lc.at):''}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`
+     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':S.tab==='tobook'?'No work orders waiting to be booked.':'Nothing in this list.'}</div>`}</div>
+  </div>`}
+
+/* ---------- dialog ---------- */
+function fld(label,k,attrs,cls){return `<label class="fld ${cls||''}"><span>${label}</span><input data-f="${k}" value="${esc(S.edit[k])}" ${attrs||''}></label>`}
+function sel(label,k,map){return `<label class="fld"><span>${label}</span><select data-f="${k}">${opts(map,S.edit[k])}</select></label>`}
+function area(label,k,ph,rows){return `<label class="fld wide"><span>${label}</span><textarea data-f="${k}" placeholder="${esc(ph||'')}" style="min-height:${rows||64}px">${esc(S.edit[k])}</textarea></label>`}
+function basics(){
+  return `<div><h3>Who sent it</h3><div class="fields" style="margin-top:6px">
+    ${fld('Company *','source_name','placeholder="e.g. 3Z, a warranty company, a property manager" list="srcs"')}<datalist id="srcs">${[...new Set(S.rows.map(w=>w.source_name))].sort().map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+    ${sel('Kind','source_kind',KIND)}${fld('Their work order or claim number','source_ref','class="mono"')}
+    ${sel('How it arrived','received_via',VIA)}${fld('Date received','received_on','type="date"')}${fld('Do not exceed amount','nte','type="number" step="0.01" min="0" inputmode="decimal" placeholder="if they set a limit"')}
+    ${fld('Their portal, if we must update it to get paid','portal_note','placeholder="e.g. Rentvine: update status and upload the invoice there"','wide')}</div></div>
+   <div><h3>Who to contact and where</h3><div class="fields" style="margin-top:6px">
+    ${fld('Tenant or customer name','contact_name')}${fld('Phone','contact_phone','type="tel" inputmode="tel"')}${fld('Second phone','contact_phone2','type="tel" inputmode="tel"')}${fld('Email','contact_email','type="email"')}
+    ${fld('Street address','street')}${fld('Apt or unit','unit')}${fld('City','city')}${fld('ZIP','zip','inputmode="numeric"')}</div></div>
+   <div><h3>What they reported</h3><div class="fields" style="margin-top:6px">
+    ${fld('Appliance','appliance','placeholder="e.g. Whirlpool dryer"')}${area('Problem as they described it','issue','',56)}
+    ${area('Original email or message, pasted in full','original_text','Paste the whole email here so nothing is lost. If it came as a PDF, attach the file after saving.',90)}
+    ${area('Our notes','notes','',48)}</div></div>`;
+}
+function intakeName(i){const c=i.customer||{};return [c.first,c.last].filter(Boolean).join(' ')||'(no name)'}
+function intakeMatches(i,w){const c=i.customer||{},ln=String(w.contact_name||'').trim().split(/\s+/).pop().toLowerCase();
+  return (digits(c.phone)&&[digits(w.contact_phone),digits(w.contact_phone2)].includes(digits(c.phone)))||(ln.length>1&&String(c.last||'').toLowerCase()===ln)}
+function bookSection(w){
+  if(w.status==='cancelled')return'';
+  if(w.intake_id)return `<div class="notice good"><b>Booked.</b> The intake is linked${w.hcp_job_number?' and the Housecall Pro job is #'+esc(w.hcp_job_number):''}.</div>`;
+  const used=new Set(S.rows.map(x=>x.intake_id).filter(Boolean));
+  const list=S.intakes.filter(i=>i.outcome==='job'&&!used.has(i.id)).sort((a,b)=>intakeMatches(b,w)-intakeMatches(a,w));
+  return `<div><h3>Book it</h3>
+    <p style="margin:6px 0">1. Contact them, then take the call through the intake guide like any other job. <a class="btn" href="../intake/" target="_blank" rel="noopener" style="text-decoration:none;margin-left:6px">Open the intake guide</a></p>
+    <p style="margin:6px 0">2. When the intake is saved as a job, come back and pick it here. This work order cannot be marked booked any other way.</p>
+    <div class="row" style="margin:8px 0"><input data-f="hcp_job_number" value="${esc(S.edit.hcp_job_number)}" class="mono" placeholder="Housecall Pro job number" aria-label="Housecall Pro job number" style="width:210px"><span class="muted">optional, but it helps later</span></div>
+    ${list.length?`<div class="hits">${list.slice(0,8).map(i=>{const m=intakeMatches(i,w),u=(i.units||[])[0]||{};return `<button class="hit" data-a="link" data-id="${w.id}" data-intake="${i.id}">${m?pill('Looks like a match','good')+' ':''}<b>${esc(intakeName(i))}</b> · ${esc(u.app||'')} · ${fmtWhen(i.created_at)}${i.csr?' · taken by '+esc(i.csr):''}</button>`}).join('')}</div>`
+      :'<p class="muted" style="margin:6px 0">No unlinked intakes saved as jobs in the last 10 days. Complete the intake first, then press Refresh.</p>'}</div>`;
+}
+function dWo(){
+  const w=S.dlg.id?wo(S.dlg.id):null,E=S.edit;
+  if(!w)return `<div class="dhead"><h2>New work order</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+   <div class="dbody">${basics()}</div>
+   <div class="dfoot"><button data-a="close">Cancel</button><button class="primary" data-a="create">${S.busy?'Saving…':'Save work order'}</button></div>`;
+  return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div>${stageCell(w)}</div>
+   ${w.status!=='cancelled'?`<div><h3>Contact log</h3>
+    <div class="row" style="margin-top:6px"><input id="evnote" data-ev="1" value="${esc(S.evnote)}" placeholder="Optional note, e.g. tenant will call back after 3" style="flex:1;min-width:180px" aria-label="Contact note">
+     ${['call','voicemail','text','email','note'].map(k=>`<button class="small" data-a="log" data-k="${k}" data-id="${w.id}">${EV[k]}</button>`).join('')}</div>
+    <ul class="hist" style="margin-top:8px">${S.events.length?S.events.map(e=>`<li>${fmtWhen(e.at)} · ${esc([EV[e.kind],e.note].filter(Boolean).join(': '))}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Nothing logged yet.</li>'}</ul></div>`:''}
+   ${bookSection(w)}
+   <div><h3>Approval, invoice and payment</h3><div class="fields" style="margin-top:6px">
+    ${sel('Approval from them','approval',APPROVAL)}${fld('Approved amount','approval_amount','type="number" step="0.01" min="0" inputmode="decimal"')}
+    ${fld('Our invoice number','invoice_number','class="mono"')}${fld('Invoice amount','invoice_amount','type="number" step="0.01" min="0" inputmode="decimal"')}
+    ${fld('Invoice sent on','invoice_sent_on','type="date"')}${fld('Paid on','paid_on','type="date"')}
+    ${w.intake_id?fld('Housecall Pro job number','hcp_job_number','class="mono"'):''}
+    <label class="row fld wide" style="flex-direction:row"><input type="checkbox" data-fc="portal_updated" ${E.portal_updated?'checked':''} style="width:auto"><span style="font-size:14px;color:var(--ink);font-weight:400">Their portal has been updated${w.portal_note?' ('+esc(w.portal_note)+')':''}</span></label></div></div>
+   <div><h3>Files</h3>
+    ${S.files.length?`<ul class="hist" style="margin-top:6px">${S.files.map(f=>`<li><button class="small" data-a="file" data-path="${esc(f.path)}">${esc(f.name)}</button> <span class="muted">${fmtDate(f.created_at)}${f.uploaded_by_name?' · '+esc(f.uploaded_by_name):''}</span></li>`).join('')}</ul>`:''}
+    <div class="row" style="margin-top:6px"><input type="file" id="upfile" accept="application/pdf,image/*,.eml,.msg,.txt,.doc,.docx" data-id="${w.id}" style="max-width:320px"><span class="muted">Attach the PDF or a saved copy of the email, up to 15 MB.</span></div></div>
+   <details><summary style="cursor:pointer;font-weight:600">Work order details</summary><div class="dbody" style="padding:12px 0 0">${basics()}</div></details>
+  </div>
+  <div class="dfoot">${w.status==='cancelled'?`<button class="ghost" data-a="reopen" data-id="${w.id}">Reopen</button>`:`<button class="ghost" data-a="cancel" data-id="${w.id}">Cancel work order</button>`}<span class="grow"></span>
+   <button class="primary" data-a="save" data-id="${w.id}">${S.busy?'Saving…':'Save'}</button></div>`;
+}
+function renderDlg(){const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
+  if(S.dlg.id&&!wo(S.dlg.id)){closeDlg();return}
+  const open=d.querySelector('details'),wasOpen=open&&open.open,top=d.scrollTop;
+  d.innerHTML=dWo();if(wasOpen){const n=d.querySelector('details');if(n)n.open=true}
+  if(!d.open)d.showModal();d.scrollTop=top}
+function closeDlg(){S.dlg=null;S.edit=null;S.events=[];S.files=[];S.evnote='';const d=$('dlg');if(d.open)d.close()}
+const cleaned=()=>{const E=S.edit,t=k=>String(E[k]==null?'':E[k]).trim()||null;
+  return {source_kind:E.source_kind,source_name:String(E.source_name||'').trim(),source_ref:t('source_ref'),received_via:E.received_via,received_on:E.received_on||today(),portal_note:t('portal_note'),
+    contact_name:String(E.contact_name||'').trim(),contact_phone:t('contact_phone'),contact_phone2:t('contact_phone2'),contact_email:t('contact_email'),street:t('street'),unit:t('unit'),city:t('city'),zip:t('zip'),
+    appliance:t('appliance'),issue:t('issue'),original_text:t('original_text'),nte:numOrNull(E.nte),notes:t('notes')}};
+
+/* ---------- actions ---------- */
+const A={
+  tab:d=>{S.tab=d.t;render()},
+  refresh:()=>load(),
+  signout:async()=>{await SB.auth.signOut();location.reload()},
+  close:()=>closeDlg(),
+  new:()=>{S.edit=Object.assign({},BLANK,{received_on:today()});S.dlg={type:'wo',id:null};renderDlg()},
+  open:d=>{const w=wo(d.id);S.edit=Object.assign({},BLANK,Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v==null?'':v])));S.events=[];S.files=[];S.evnote='';S.dlg={type:'wo',id:d.id};renderDlg();loadDetail(d.id)},
+  create:async()=>{if(S.busy)return;const row=cleaned();
+    if(!row.source_name){toast('Type the company that sent it.',true);return}
+    if(!row.contact_name&&!row.contact_phone){toast('Add the name or phone of the person to contact.',true);return}
+    const dup=row.source_ref&&S.rows.find(w=>w.source_ref===row.source_ref&&w.source_name.toLowerCase()===row.source_name.toLowerCase());
+    if(dup&&S.dupOk!==row.source_ref){S.dupOk=row.source_ref;toast(`${dup.ref} already has that company and number. Press Save again if this really is a separate one.`,true);return}
+    S.busy=true;renderDlg();
+    const {data,error}=await SB.from('work_orders').insert(row).select('*').single();
+    S.busy=false;S.dupOk=null;
+    if(error){toast(error.message,true);renderDlg();return}
+    toast(`${data.ref} saved. It is under To book.`);S.tab='tobook';await load();A.open({id:data.id})},
+  save:async d=>{if(S.busy)return;const E=S.edit,w=wo(d.id),row=cleaned();
+    if(!row.source_name){toast('The company that sent it cannot be blank.',true);return}
+    Object.assign(row,{approval:E.approval,approval_amount:numOrNull(E.approval_amount),invoice_number:String(E.invoice_number||'').trim()||null,invoice_amount:numOrNull(E.invoice_amount),
+      invoice_sent_on:E.invoice_sent_on||null,paid_on:E.paid_on||null,portal_updated:!!E.portal_updated,hcp_job_number:String(E.hcp_job_number||'').trim()||null});
+    if(row.paid_on&&!row.invoice_sent_on){toast('Add the date the invoice was sent before marking it paid.',true);return}
+    if(row.invoice_sent_on&&!w.intake_id){toast('Link the intake before recording an invoice.',true);return}
+    S.busy=true;renderDlg();const ok=await upd(d.id,row,'Saved.');S.busy=false;if(ok)closeDlg();else renderDlg()},
+  log:async d=>{const note=S.evnote.trim()||null;if(d.k==='note'&&!note){toast('Type the note first.',true);return}
+    const {error}=await SB.from('work_order_events').insert({work_order_id:d.id,kind:d.k,note});
+    if(error){toast(error.message,true);return}
+    S.evnote='';const w=wo(d.id);
+    if(w.status==='new'&&d.k!=='note')await SB.from('work_orders').update({status:'contacting'}).eq('id',d.id);
+    toast(EV[d.k]+' logged.');await load();loadDetail(d.id)},
+  link:async d=>{const job=String(S.edit.hcp_job_number||'').trim()||null;
+    if(await upd(d.id,{status:'booked',intake_id:d.intake,hcp_job_number:job},'Booked. The intake is linked to this work order.')){S.edit.hcp_job_number=job||'';S.tab='booked';render();loadDetail(d.id)}},
+  cancel:async(d,el)=>{if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Click again to cancel it';el.style.color='var(--bad)';
+      setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.textContent='Cancel work order';el.style.color=''}},5000);return}
+    if(await upd(d.id,{status:'cancelled'},'Work order cancelled. It is under Cancelled.'))closeDlg()},
+  reopen:async d=>{const w=wo(d.id);if(await upd(d.id,{status:w.intake_id?'booked':'contacting'},'Reopened.'))closeDlg()},
+  file:async d=>{const {data,error}=await SB.storage.from('work-orders').createSignedUrl(d.path,300);
+    if(error){toast(error.message,true);return}window.open(data.signedUrl,'_blank','noopener')}
+};
+async function upload(el){
+  const f=el.files[0],id=el.dataset.id;if(!f)return;
+  if(f.size>15*1024*1024){toast('That file is over 15 MB.',true);el.value='';return}
+  const safe=f.name.replace(/[^A-Za-z0-9._-]+/g,'_').slice(-80),path=`${id}/${Date.now()}-${safe}`;
+  toast('Uploading '+f.name+'…');
+  const up=await SB.storage.from('work-orders').upload(path,f,{contentType:f.type||'application/octet-stream'});
+  if(up.error){toast('Upload failed: '+up.error.message,true);return}
+  const {error}=await SB.from('work_order_files').insert({work_order_id:id,path,name:f.name,size_bytes:f.size,uploaded_by_name:S.me.display_name||S.me.email});
+  if(error){toast(error.message,true);return}
+  toast(f.name+' attached.');loadDetail(id);
+}
+
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;
+  if(el.dataset.a==='open'&&e.target.closest('button,select,input,a'))return;
+  A[el.dataset.a](el.dataset,el)});
+document.addEventListener('input',e=>{const el=e.target;
+  if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
+  if(el.dataset.f&&S.edit)S.edit[el.dataset.f]=el.value;
+  if(el.dataset.ev)S.evnote=el.value});
+document.addEventListener('change',e=>{const el=e.target;
+  if(el.dataset.fc&&S.edit)S.edit[el.dataset.fc]=el.checked;
+  if(el.id==='upfile')upload(el)});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(office())load()});
+$('dlg').addEventListener('close',()=>{S.dlg=null;S.edit=null});
+window.addEventListener('focus',()=>{if(S.session&&office()&&!S.loading&&!(S.dlg&&!S.dlg.id))load()});
+
+function render(){
+  $('app').innerHTML=!SB?'<div class="card"><h2>Work Orders</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!office()?vWaiting():vMain();
+}
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&office())load();
+})();
+</script>
+</body>
+</html>
