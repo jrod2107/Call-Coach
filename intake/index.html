@@ -995,9 +995,12 @@ function modelSerial(u){
    Only appliance answers are sent, never the customer's name, phone or address.
    If it fails or is slow, the description falls back to the answer list. */
 const SUM_SYS='You write the job description a field appliance repair technician reads before a service call. '+
-  'From the intake answers given, write one short paragraph (2 to 4 sentences, under 90 words) in plain English that gives the gist: '+
-  'what the appliance is (brand, style, type), what it is doing wrong, when it started and how often, any error code, and anything the tech should know before arriving '+
-  '(broken parts, recent repairs, tight access, warranty company). Use only facts in the answers. Do not guess a cause or a repair. Do not mention anything that was not asked or not provided. '+
+  'You are given every question the office asked and the answer chosen, plus the customer\'s own description of the problem. '+
+  'Write a detailed but easy to read description in plain English, in one or two paragraphs (about 80 to 200 words, longer only if there are many answers). '+
+  'Start with what the appliance is (brand, style, type) and what it is doing wrong. Then cover what the customer described in their own words, keeping their specifics '+
+  '(sounds, smells, leaks and where, what works and what does not, what they already tried). Then work in every answer from the question list: each one must appear in the description, '+
+  'including "No" answers that rule something out, when it started, whether it was sudden or gradual, how often it happens, any error code, broken parts, recent repairs, age, tight access and warranty company. '+
+  'Write full sentences, not a list of questions and answers. Use only facts in the answers. Do not guess a cause or a repair. Do not mention anything that was not asked or not provided. '+
   'Do not include the model number, serial number, prices, or any customer name or contact details. '+
   'Reply with only a JSON object: {"summary":"..."}';
 async function summarizeUnit(u,facts){
@@ -1008,14 +1011,15 @@ async function summarizeUnit(u,facts){
       headers:{"Content-Type":"application/json","Authorization":"Bearer "+s.access_token,"apikey":CFG.supabaseAnonKey},
       body:JSON.stringify({tier:"quick",system:SUM_SYS,messages:[{role:"user",content:"Intake answers:\n"+facts}]})});
     if(!r.ok) return "";
-    const j=await r.json(); const out=String(j&&j.data&&j.data.summary||"").replace(/\s+/g," ").trim();
-    return out.length>20&&out.length<900?out:"";
+    const j=await r.json();
+    const out=String(j&&j.data&&j.data.summary||"").split(/\n\s*\n/).map(p=>p.replace(/\s+/g," ").trim()).filter(Boolean).join("\n\n");
+    return out.length>20&&out.length<2500?out:"";
   }catch(e){ return ""; }
   finally{ clearTimeout(t); }
 }
 async function makeSummaries(){
   P2.sum=new Map();
-  await Promise.all(S.units.map(async u=>{ if(!u.app) return; const s=await summarizeUnit(u,unitFacts(u).concat(extraFacts(u)).join("\n")); if(s) P2.sum.set(u,s); }));
+  await Promise.all(S.units.map(async u=>{ if(!u.app) return; const s=await summarizeUnit(u,summaryFacts(u).join("\n")); if(s) P2.sum.set(u,s); }));
 }
 function unitLine(u){
   const brand=brandOf(u); const {model,serial}=modelSerial(u);
@@ -1053,11 +1057,21 @@ function unitFacts(u){
   }
   return L;
 }
-/* Extra answers the tech should know about: raw for the AI summary, sentences for the fallback. */
-function extraFacts(u){
-  if(u.svc==="Install") return [];
-  return [[SH_tight,"Tight or hard-to-access space"],[SH_parts,"Customer described broken parts"],[SH_workedOn,"Worked on recently"],[SH_age,"Age"]]
-    .map(([q,l])=>{ const v=cleanVal(u.ans[q.id]); return v?l+": "+v:""; }).filter(Boolean);
+/* Everything the AI summary is written from: every answered question in the appliance's tree with its
+   question text, the shared questions, and the customer's own words. No model, serial or customer details. */
+function summaryFacts(u){
+  const app=appOf(u); const L=[];
+  const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
+  L.push("Appliance: "+[brandOf(u),u.app].filter(Boolean).join(" ")+" ("+svcWord+")");
+  if(u.svc==="Warranty") L.push(warrantyLine(u));
+  if(app) app.qs.filter(q=>!q.info).forEach(q=>{ const v=visible(q,u.ans)?cleanVal(u.ans[q.id]):""; if(v) L.push(String(q.q).replace(/\s+—\s+/g,", ").trim()+" "+v); });
+  if(u.svc!=="Install"){
+    [[SH_err,"Error code showing"],[SH_dur,"How long it has been happening"],[SH_onset,"Sudden or gradual"],[SH_every,"Every time, or on and off"],
+     [SH_tight,"Tight or hard-to-access space"],[SH_parts,"Customer described broken parts"],[SH_workedOn,"Worked on recently"],[SH_age,"Age of appliance"]]
+      .forEach(([q,l])=>{ const v=cleanVal(u.ans[q.id]); if(v) L.push(l+": "+v); });
+    const w=String(u.ans[SH_words.id]||"").trim(); if(w) L.push('Customer\'s own words: "'+w.replace(/"/g,"'")+'"');
+  }
+  return L;
 }
 function plainSummary(u){
   const end=s=>/[.!?]"?$/.test(s)?s:s+".";
@@ -1274,7 +1288,7 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ i
   const {data:{session:s}}=await SB.auth.getSession();
   if(s){ session=s; startSignedIn(); } else showLogin(true);
 })();
-window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,unitFacts,businessUnitKey,businessUnitId,summarizeUnit,state:()=>({online,hcpOk,lastResults})};
+window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,unitFacts,summaryFacts,businessUnitKey,businessUnitId,summarizeUnit,state:()=>({online,hcpOk,lastResults})};
 })();
 </script>
 <script src="schedule-settings.js?v=20261113c"></script>
