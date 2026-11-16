@@ -947,13 +947,62 @@ function cleanLabel(q){
      .replace(/^(What|Which|When|Where|How) /i,m=>m);
   return t.charAt(0).toUpperCase()+t.slice(1);
 }
+/* Model & serial come in as one free-text box. Pull the two numbers apart so the
+   service name carries only the model and the description can list both. */
+function modelSerial(u){
+  const raw=String(u.ans[SH_model.id]||"").trim(); if(!raw) return {model:"",serial:""};
+  const tok="([A-Za-z0-9][A-Za-z0-9\\-./]*)";
+  const sRe=new RegExp("\\b(?:serial|ser|s\\/n|sn)\\b\\.?\\s*(?:number|num|no)?\\.?\\s*[#:\\-]*\\s*"+tok,"i");
+  const mRe=new RegExp("\\b(?:model|mod|m\\/n)\\b\\.?\\s*(?:number|num|no)?\\.?\\s*[#:\\-]*\\s*"+tok,"i");
+  let rest=raw, model="", serial="";
+  const s=rest.match(sRe); if(s){ serial=s[1]; rest=rest.replace(s[0]," "); }
+  const m=rest.match(mRe); if(m){ model=m[1]; rest=rest.replace(m[0]," "); }
+  const left=rest.split(/[\s,;|]+|\s\/\s/).map(x=>x.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,"")).filter(x=>/\d/.test(x)||x.length>3);
+  if(!model&&left.length) model=left.shift();
+  if(!serial&&left.length) serial=left.shift();
+  return {model:model.toUpperCase(),serial:serial.toUpperCase()};
+}
+/* Plain-English summary for the tech, written by the desk-ask function from the intake answers.
+   Only appliance answers are sent, never the customer's name, phone or address.
+   If it fails or is slow, the description falls back to the answer list. */
+const SUM_SYS='You write the job description a field appliance repair technician reads before a service call. '+
+  'From the intake answers given, write one short paragraph (2 to 4 sentences, under 90 words) in plain English that gives the gist: '+
+  'what the appliance is (brand, style, type), what it is doing wrong, when it started and how often, any error code, and anything the tech should know before arriving '+
+  '(broken parts, recent repairs, tight access, warranty company). Use only facts in the answers. Do not guess a cause or a repair. '+
+  'Do not include the model number, serial number, prices, or any customer name or contact details. '+
+  'Reply with only a JSON object: {"summary":"..."}';
+async function summarizeUnit(u,facts){
+  const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),15000);
+  try{
+    const {data:{session:s}}=await SB.auth.getSession(); if(!s) return "";
+    const r=await fetch(CFG.supabaseUrl+"/functions/v1/desk-ask",{method:"POST",signal:ctl.signal,
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+s.access_token,"apikey":CFG.supabaseAnonKey},
+      body:JSON.stringify({tier:"quick",system:SUM_SYS,messages:[{role:"user",content:"Intake answers:\n"+facts}]})});
+    if(!r.ok) return "";
+    const j=await r.json(); const out=String(j&&j.data&&j.data.summary||"").replace(/\s+/g," ").trim();
+    return out.length>20&&out.length<900?out:"";
+  }catch(e){ return ""; }
+  finally{ clearTimeout(t); }
+}
+async function makeSummaries(){
+  P2.sum=new Map();
+  await Promise.all(S.units.map(async u=>{ if(!u.app) return; const s=await summarizeUnit(u,unitFacts(u).concat(extraFacts(u)).join("\n")); if(s) P2.sum.set(u,s); }));
+}
 function unitLine(u){
+  const brand=brandOf(u); const {model,serial}=modelSerial(u);
+  const sum=P2.sum&&P2.sum.get(u);
+  const D=[sum||plainSummary(u)];
+  if(sum&&u.svc==="Warranty") D.push("\n"+warrantyLine(u));
+  D.push("\n\nModel Number: "+model+"\nSerial Number: "+serial);
+  return {name:[brand,u.app||"Appliance"].filter(Boolean).join(" ")+(model?" - "+model:" -"), description:D.join("\n"), unit_price:0, quantity:1, kind:"labor"};
+}
+function warrantyLine(u){ return "Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?", claim "+u.ans[W_sr.id].trim().toUpperCase():""); }
+function unitFacts(u){
   const app=appOf(u); const L=[];
   const brand=brandOf(u);
-  const model=String(u.ans[SH_model.id]||"").trim();
   const svcWord=u.svc==="Install"?"install":u.svc==="Warranty"?"warranty diagnosis":"diagnosis";
-  L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord+(model?" (model "+model+")":""));
-  if(u.svc==="Warranty") L.push("Warranty: "+warrantyCo(u)+(visible(W_sr,u.ans)&&u.ans[W_sr.id]?", claim "+u.ans[W_sr.id].trim().toUpperCase():""));
+  L.push([brand,u.app].filter(Boolean).join(" ")+" "+svcWord);
+  if(u.svc==="Warranty") L.push(warrantyLine(u));
   if(app){
     const qs=app.qs.filter(q=>!q.info);
     const mains=new Set(qs.filter(q=>q.main).map(q=>q.id));
@@ -973,7 +1022,34 @@ function unitLine(u){
     if(when.length){ const t=when.join(", "); L.push(t.charAt(0).toUpperCase()+t.slice(1)); }
     const w=String(u.ans[SH_words.id]||"").trim(); if(w) L.push('Customer says: "'+w.replace(/"/g,"'")+'"');
   }
-  return {name:(u.app||"Appliance")+(model?" - "+model:" -"), description:L.join("\n"), unit_price:0, quantity:1, kind:"labor"};
+  return L;
+}
+/* Extra answers the tech should know about: raw for the AI summary, sentences for the fallback. */
+function extraFacts(u){
+  if(u.svc==="Install") return [];
+  return [[SH_tight,"Tight or hard-to-access space"],[SH_parts,"Customer described broken parts"],[SH_workedOn,"Worked on recently"],[SH_age,"Age"]]
+    .map(([q,l])=>{ const v=cleanVal(u.ans[q.id]); return v?l+": "+v:""; }).filter(Boolean);
+}
+function plainSummary(u){
+  const end=s=>/[.!?]"?$/.test(s)?s:s+".";
+  const P=unitFacts(u).map(end);
+  if(u.svc!=="Install"){
+    const parts=u.ans[SH_parts.id], worked=u.ans[SH_workedOn.id], tight=u.ans[SH_tight.id], age=u.ans[SH_age.id];
+    if(parts==="No"&&worked==="No") P.push("No broken parts or recent repairs reported.");
+    else {
+      if(parts==="Yes") P.push("Customer described a broken part.");
+      if(worked&&worked!=="No") P.push("Worked on recently by "+(/City Appliance/.test(worked)?"City Appliance":"someone else")+".");
+    }
+    if(tight==="Yes") P.push("Tight or hard-to-access space.");
+    if(age&&age!=="Not sure") P.push("Appliance is "+age.toLowerCase()+" old.");
+  }
+  return P.join(" ");
+}
+/* HCP business unit, picked from the intake answers. IDs come from HCP (job_fields.business_unit.id). */
+const BUSINESS_UNITS=Object.assign({residential:"buu_e7e601519e52491fb9a68c1e0d005a52",commercial:"",warranty:""},CFG.hcpBusinessUnits||{});
+function businessUnitId(){
+  const key=isCommercial()?"commercial":S.units.some(u=>u.svc==="Warranty")?"warranty":"residential";
+  return BUSINESS_UNITS[key]||"";
 }
 function buildLineItems(diagSvc){
   const {total}=feeParts(); const items=[];
@@ -1044,10 +1120,18 @@ async function saveToHcp(kind){
   try{
     const {cid,aid}=await ensureCustomer();
     const note=buildNote(kind!=="job");
+    msg.textContent="Writing the tech summary…";
+    await makeSummaries();
+    msg.textContent="Saving to HCP…";
     let res, number, id, warn="";
     if(kind==="job"){
       const svc=null; // plain line item each time (Jake, 2026-11-08): price book "Diagnostic - $125" can't carry per-call price/description reliably
-      res=await call("job_create",{job:{customer_id:cid,address_id:aid,tags:buildTags(),notes:note}});
+      const job={customer_id:cid,address_id:aid,tags:buildTags(),notes:note};
+      const bu=businessUnitId();
+      if(bu){
+        try{ res=await call("job_create",{job:Object.assign({},job,{job_fields:{business_unit_id:bu}})}); }
+        catch(eb){ res=await call("job_create",{job}); warn="The business unit didn't save ("+eb.message.slice(0,100)+"). Set it in HCP. "; }
+      } else res=await call("job_create",{job});
       id=res.id; number=res.invoice_number;
       h.saved={kind:"job",id,number}; save();
       try{ await call("line_items_bulk",{job_id:id,line_items:buildLineItems(svc),append:false}); }
@@ -1144,7 +1228,7 @@ $("newCall").addEventListener("click",()=>{ lastResults=null; setTimeout(()=>{ c
   const {data:{session:s}}=await SB.auth.getSession();
   if(s){ session=s; startSignedIn(); } else showLogin(true);
 })();
-window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,state:()=>({online,hcpOk,lastResults})};
+window.__P2={call,callFn,buildLineItems,buildTags,hcpMissing,leadMissing,unitLine,unitFacts,summarizeUnit,state:()=>({online,hcpOk,lastResults})};
 })();
 </script>
 <script src="schedule-settings.js?v=20261113c"></script>
