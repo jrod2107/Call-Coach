@@ -112,7 +112,7 @@ const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12
 const lastName=n=>String(n||'').trim().split(/\s+/).pop().replace(/[^A-Za-z0-9]/g,'');
 
 const TABS=[['need','Need to order',['need_to_order']],['ordered','On order',['ordered','backordered']],['shipped','Shipped',['shipped']],
-  ['received','Received',['received']],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled','stocked']]];
+  ['received','Received',['received']],['triage','Triage to decide',[],p=>!!triageDue(p)],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled','stocked']]];
 const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backordered, no ETA',shipped:'Shipped',received:'Received',installed:'Installed',returned:'Not used, awaiting credit',credited:'Credit received',cancelled:'Cancelled',stocked:'Moved to stock'};
 const TONE={need_to_order:'warn',ordered:'info',backordered:'bad',shipped:'info',received:'good',returned:'warn'};
 const S={session:null,me:null,parts:[],vendors:[],locs:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
@@ -171,8 +171,18 @@ function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given access to the Parts desk yet. Ask Jake to set your role.</p>
   <button data-a="signout">Sign out</button></div>`}
 
+/* Triage parts are extras ordered in case they are needed. One comes due for a decision (install it, return it,
+   or keep it as stock) 10 days after it was ordered, or as soon as another part on the same job is installed. */
+const TRIAGE_DAYS=10,inTab=(t,p)=>t[3]?t[3](p):t[2].includes(p.status);
+function triageDue(p){
+  if(!p.triage||!['ordered','backordered','shipped','received'].includes(p.status))return '';
+  if(S.parts.some(x=>x.id!==p.id&&x.job_number===p.job_number&&x.status==='installed'))return 'Another part on this job was installed. Return this one?';
+  const d=-daysUntil(p.ordered_on||String(p.created_at).slice(0,10));
+  return d>=TRIAGE_DAYS?`${d} days since ordered. Install, return or keep as stock.`:'';
+}
 function flags(p){
   const f=[];
+  if(p.triage){f.push(pill('Triage','info'));const due=triageDue(p);if(due)f.push(pill(due,'bad'))}
   if(['ordered','shipped'].includes(p.status)&&p.eta&&daysUntil(p.eta)<0)f.push(pill('Past due','bad'));
   if(p.status==='received'&&p.return_by){const d=daysUntil(p.return_by);f.push(pill(d<0?'Return window passed':'Return by '+fmtDate(p.return_by),d<0?'bad':d<=7?'warn':''))}
   if(p.status==='need_to_order'){const d=Math.floor((Date.now()-new Date(p.created_at))/864e5);if(d>=1)f.push(pill(`Waiting ${d} day${d===1?'':'s'}`,d>=2?'bad':'warn'))}
@@ -193,7 +203,7 @@ function rowActions(p){
 function vMain(){
   const q=S.q.trim().toLowerCase();
   const match=p=>!q||[p.tag,p.job_number,p.customer_name,p.part_number,p.description,p.po_number,p.vendor_order_no,p.tracking_number,vname(p)].join(' ').toLowerCase().includes(q);
-  const cur=TABS.find(t=>t[0]===S.tab),rows=S.parts.filter(p=>cur[2].includes(p.status)&&match(p));
+  const cur=TABS.find(t=>t[0]===S.tab),rows=S.parts.filter(p=>inTab(cur,p)&&match(p));
   return `<header class="top"><a href="../home/" style="color:inherit;text-decoration:none;opacity:.9" aria-label="Back to Home">← Home</a><h1>Parts Desk</h1>
    <input id="q" type="search" placeholder="Search tag, job, customer, part or PO" value="${esc(S.q)}" aria-label="Search parts">
    <span class="grow"></span>
@@ -204,8 +214,8 @@ function vMain(){
    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad">Could not load parts: ${esc(S.err)}</div>`:''}
-   <div class="tabs">${TABS.map(([k,l,st])=>{const n=S.parts.filter(p=>st.includes(p.status)).length;
-     return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['need','returns'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   <div class="tabs">${TABS.map(t=>{const [k,l]=t,n=S.parts.filter(p=>inTab(t,p)).length;
+     return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['need','returns','triage'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
    <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>Job</th><th>Vendor and PO</th><th>Where it stands</th><th></th></tr></thead><tbody>
     ${rows.map(p=>`<tr data-a="open" data-id="${p.id}">
       <td class="mono">${esc(p.tag)}</td>
@@ -230,6 +240,7 @@ function dPart(p){
     ${f('Expected arrival','eta','','type="date"')}${f('List price','list_price','','type="number" step="0.01" min="0"')}${f('Our cost','cost','','type="number" step="0.01" min="0"')}${f('Sell price','sell_price','','type="number" step="0.01" min="0"')}
     <label class="fld"><span>Where it is</span><select id="pf-location_id"><option value="">Not set</option>${S.locs.filter(l=>l.active||l.id===p.location_id).map(l=>`<option value="${l.id}" ${p.location_id===l.id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></label>
     ${f('Shelf or bin','bin')}
+    <label class="row fld wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="pf-triage" ${p.triage?'checked':''} ${ro} style="width:auto"><span>Triage part: an extra ordered in case it is needed. Return it if it is not used.</span></label>
     <label class="fld wide"><span>Notes</span><textarea id="pf-notes">${esc(p.notes)}</textarea></label></div>
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
   </div>
@@ -249,6 +260,7 @@ function dRequest(){
     ${o&&r.ordered?'':`<label class="fld"><span>Suggested vendor, if you checked</span><select id="rq-sug_vendor" data-req="sug_vendor"><option value="">No suggestion</option>${S.vendors.filter(v=>v.active&&!isOther(v)).map(v=>`<option value="${v.id}" ${r.sug_vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
     ${f('Branch, or where you saw it in stock','sug_note','wide','placeholder="e.g. 2 on the shelf at the San Marcos counter, can pick up today"')}`}
     <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes" placeholder="e.g. what the customer was told: return visit to install on Thursday">${esc(r.notes)}</textarea></label></div>
+   <label class="row"><input type="checkbox" id="rq-triage" data-reqtriage="1" ${r.triage?'checked':''} style="width:auto"><span>Triage part: an extra in case it is needed. It gets flagged to return if it is not used.</span></label>
    ${r.stock&&r.stock.n?`<div class="notice" style="margin:0"><b>${r.stock.n} of ${esc(r.stock.pn)} already in stock</b> (${esc(r.stock.where)}). <a href="../stock/" style="color:inherit">Open Stock</a> to hold one for this job instead of ordering.</div>`:''}
    ${o?`<label class="row"><input type="checkbox" id="rq-ordered" data-reqcheck="1" ${r.ordered?'checked':''} style="width:auto"><span>This part has already been ordered</span></label>
     ${r.ordered?`<div class="fields"><label class="fld"><span>Vendor *</span><select id="rq-vendor" data-req="vendor"><option value="">Choose…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${r.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
@@ -323,7 +335,7 @@ const A={
   print:d=>printTag(part(d.id)),
   save:async d=>{const p=part(d.id),v=k=>{const el=$('pf-'+k);return el?el.value.trim():''},n=k=>v(k)===''?null:Number(v(k));
     const patch=office()?{description:v('description'),qty:Math.max(1,parseInt(v('qty'),10)||1),vendor_id:v('vendor_id')||null,vendor_other:v('vendor_other')||null,po_number:v('po_number')||null,vendor_order_no:v('vendor_order_no')||null,
-      tracking_number:v('tracking_number')||null,eta:v('eta')||null,list_price:n('list_price'),cost:n('cost'),sell_price:n('sell_price'),bin:v('bin')||null,notes:v('notes')||null,location_id:v('location_id')||null}:{notes:v('notes')||null,location_id:v('location_id')||null};
+      tracking_number:v('tracking_number')||null,eta:v('eta')||null,list_price:n('list_price'),cost:n('cost'),sell_price:n('sell_price'),bin:v('bin')||null,notes:v('notes')||null,location_id:v('location_id')||null,triage:!!($('pf-triage')||{}).checked}:{notes:v('notes')||null,location_id:v('location_id')||null};
     if(office()&&patch.tracking_number&&!p.tracking_number&&['ordered','backordered'].includes(p.status))patch.status='shipped';
     if(await upd(p.id,patch,patch.status==='shipped'?'Saved. Tracking added, so the part moved to Shipped.':'Saved.'))closeDlg()},
   hsearch:async()=>{const r=S.req,q=(r.hq||'').trim();if(q.length<2){r.msg='Type at least two letters or digits.';renderDlg();return}
@@ -336,7 +348,7 @@ const A={
   hjob:d=>{const r=S.req,j=r.jobs[+d.i];r.job_number=String(j.invoice_number||'');r.hcp_job_id=j.id||null;if(!r.appliance&&j.description)r.appliance=String(j.description).slice(0,60);r.jobs=null;r.custs=null;r.msg=`Linked to Housecall Pro job #${r.job_number}.`;renderDlg()},
   submit:async()=>{const r=S.req;if(!r.job_number.trim()||!r.part_number.trim()){toast('Job number and part number are required.',true);return}
     const row={job_number:r.job_number.trim(),hcp_job_id:r.hcp_job_id,customer_name:r.customer_name.trim(),appliance:r.appliance.trim(),
-      part_number:r.part_number.trim().toUpperCase(),description:r.description.trim(),qty:Math.max(1,parseInt(r.qty,10)||1),notes:r.notes.trim()||null};
+      part_number:r.part_number.trim().toUpperCase(),description:r.description.trim(),qty:Math.max(1,parseInt(r.qty,10)||1),notes:r.notes.trim()||null,triage:!!r.triage};
     if(!(office()&&r.ordered)){row.suggested_vendor_id=r.sug_vendor||null;row.suggested_note=r.sug_note.trim()||null}
     let tab='need',msg='Request sent. It is under Need to order.';
     if(office()&&r.ordered){const v=S.vendors.find(x=>x.id===r.vendor);if(!v){toast('Pick the vendor it was ordered from.',true);return}
@@ -367,6 +379,7 @@ document.addEventListener('input',e=>{const el=e.target;
 document.addEventListener('change',async e=>{const el=e.target;
   if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||Object.assign({},pickOf(part(el.dataset.id)))).vendor=el.value;render();return}
   if(el.dataset.reqcheck&&S.req){S.req.ordered=el.checked;renderDlg();return}
+  if(el.dataset.reqtriage&&S.req){S.req.triage=el.checked;return}
   if(el.dataset.req==='vendor'&&S.req){S.req.vendor=el.value;renderDlg();return}
   /* Stock check: before a part goes to ordering, see whether one is already on a shelf or truck. */
   if(el.dataset.req==='part_number'&&S.req){const r=S.req,pn=el.value.trim().toUpperCase();r.stock=null;if(!pn)return;
