@@ -112,10 +112,10 @@ const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12
 const lastName=n=>String(n||'').trim().split(/\s+/).pop().replace(/[^A-Za-z0-9]/g,'');
 
 const TABS=[['need','Need to order',['need_to_order']],['ordered','On order',['ordered','backordered']],['shipped','Shipped',['shipped']],
-  ['received','Received',['received']],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled']]];
-const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backordered, no ETA',shipped:'Shipped',received:'Received',installed:'Installed',returned:'Not used, awaiting credit',credited:'Credit received',cancelled:'Cancelled'};
+  ['received','Received',['received']],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled','stocked']]];
+const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backordered, no ETA',shipped:'Shipped',received:'Received',installed:'Installed',returned:'Not used, awaiting credit',credited:'Credit received',cancelled:'Cancelled',stocked:'Moved to stock'};
 const TONE={need_to_order:'warn',ordered:'info',backordered:'bad',shipped:'info',received:'good',returned:'warn'};
-const S={session:null,me:null,parts:[],vendors:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
+const S={session:null,me:null,parts:[],vendors:[],locs:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const part=id=>S.parts.find(p=>p.id===id);
@@ -136,6 +136,7 @@ async function load(){
   const [p,v]=await Promise.all([
     SB.from('parts').select('*, vendors(name,return_days)').order('created_at',{ascending:false}).limit(1000),
     SB.from('vendors').select('*').order('name')]);
+  const l=await SB.from('stock_locations').select('id,name,kind,active').order('name');S.locs=l.data||[];
   S.loading=false;
   if(p.error||v.error)S.err=(p.error||v.error).message;else{S.err='';S.parts=p.data||[];S.vendors=(v.data||[]).sort((a,b)=>isOther(a)-isOther(b)||a.name.localeCompare(b.name))}
   render();if(S.dlg)renderDlg();
@@ -181,8 +182,8 @@ function rowActions(p){
     return `<select data-pick="vendor" data-id="${p.id}" aria-label="Vendor"><option value="">Vendor…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${pk.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${ov&&pk.vendor===ov.id?` <input data-pick="other" data-id="${p.id}" value="${esc(pk.other)}" placeholder="Vendor name" aria-label="Other vendor name" style="width:130px;display:inline-block">`:''} <input class="mono" data-pick="order" data-id="${p.id}" value="${esc(pk.order)}" placeholder="Order no." aria-label="Vendor order number" style="width:118px;display:inline-block"> <button class="primary small" data-a="order" data-id="${p.id}">Mark ordered</button>`}
   if(p.status==='ordered'||p.status==='backordered')return o?`<button class="small" data-a="backorder" data-id="${p.id}">${p.status==='backordered'?'Has an ETA now':'Backordered'}</button> <button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
   if(p.status==='shipped')return o?`<button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
-  if(p.status==='received')return `<button class="primary small" data-a="installed" data-id="${p.id}">Installed</button> <button class="small" data-a="notused" data-id="${p.id}">Not used</button>`;
-  if(p.status==='returned')return o?`<button class="primary small" data-a="credit" data-id="${p.id}">Credit received</button>`:'';
+  if(p.status==='received')return `<button class="primary small" data-a="installed" data-id="${p.id}">Installed</button> <button class="small" data-a="notused" data-id="${p.id}">Not used</button>${o?` <button class="small" data-a="tostock" data-id="${p.id}">Keep as stock</button>`:''}`;
+  if(p.status==='returned')return o?`<button class="primary small" data-a="credit" data-id="${p.id}">Credit received</button> <button class="small" data-a="tostock" data-id="${p.id}">Keep as stock</button>`:'';
   return '';
 }
 function vMain(){
@@ -227,7 +228,7 @@ function dPart(p){
     <label class="fld wide"><span>Notes</span><textarea id="pf-notes">${esc(p.notes)}</textarea></label></div>
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
   </div>
-  <div class="dfoot">${o&&!['cancelled','credited','installed'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
+  <div class="dfoot">${o&&!['cancelled','credited','installed','stocked'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
    <button data-a="print" data-id="${p.id}">Print tag</button><button class="primary" data-a="save" data-id="${p.id}">Save</button></div>`}
 function dRequest(){
   const r=S.req,o=office();
@@ -248,6 +249,19 @@ function dRequest(){
      <p class="muted">It will go straight to On order, or to Shipped if you add a tracking number.</p>`:''}`:''}
   </div>
   <div class="dfoot"><button data-a="close">Cancel</button><button class="primary" data-a="submit">${o&&r.ordered?'Add part':'Send request'}</button></div>`}
+function dToStock(p){
+  const locs=S.locs.filter(l=>l.active),shop=locs.find(l=>l.kind==='shop')||locs[0];
+  return `<div class="dhead"><h2>Keep ${esc(p.tag)} as stock</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''} ${esc(p.description)}<br><span class="muted">Ordered for job #${esc(p.job_number)}${vname(p)?' from '+esc(vname(p)):''}${p.cost!=null?' · cost '+money(p.cost)+(p.qty>1?' each':''):' · no cost recorded'}</span></div>
+   <p class="muted" style="margin:0">Instead of sending it back, this puts the part into Stock with its cost and vendor already filled in. It leaves this job and moves to Finished here.</p>
+   ${locs.length?`<div class="fields">
+    <label class="fld"><span>Where it will live</span><select id="ts-loc">${locs.map(l=>`<option value="${l.id}" ${shop&&l.id===shop.id?'selected':''}>${esc(l.name)}</option>`).join('')}</select></label>
+    <label class="fld"><span>Shelf or bin</span><input id="ts-bin" value="${esc(p.bin)}" placeholder="optional"></label>
+    <label class="fld"><span>Kept for</span><select id="ts-purpose"><option value="keep">Keep in stock</option><option value="ebay">Sell on eBay</option><option value="undecided">Not decided</option></select></label></div>`
+    :'<div class="notice bad">No stock locations are set up yet. Add one on the Stock page first.</div>'}
+  </div>
+  <div class="dfoot"><button data-a="close">Cancel</button>${locs.length?`<button class="primary" data-a="movestock" data-id="${p.id}">Move to stock</button>`:''}</div>`}
 function dVendors(){
   return `<div class="dhead"><h2>Vendors</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody"><p class="muted">Return days is how long a vendor gives you to send back an unused part. It sets the "return by" date when a part is received.</p>
@@ -257,9 +271,9 @@ function dVendors(){
    <div class="row"><input id="vn-new" placeholder="New vendor name" style="flex:1" aria-label="New vendor name"><button data-a="vadd">Add vendor</button></div></div>`}
 function renderDlg(){
   const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
-  const p=S.dlg.type==='part'?part(S.dlg.id):null;
-  if(S.dlg.type==='part'&&!p){S.dlg=null;if(d.open)d.close();return}
-  d.innerHTML=S.dlg.type==='part'?dPart(p):S.dlg.type==='request'?dRequest():dVendors();
+  const needsPart=['part','tostock'].includes(S.dlg.type),p=needsPart?part(S.dlg.id):null;
+  if(needsPart&&!p){S.dlg=null;if(d.open)d.close();return}
+  d.innerHTML=S.dlg.type==='part'?dPart(p):S.dlg.type==='tostock'?dToStock(p):S.dlg.type==='request'?dRequest():dVendors();
   if(!d.open)d.showModal();
 }
 function closeDlg(){S.dlg=null;S.req=null;const d=$('dlg');if(d.open)d.close()}
@@ -326,6 +340,12 @@ const A={
     const {error}=await SB.from('parts').insert(row);
     if(error){toast(error.message,true);return}
     closeDlg();S.tab=tab;toast(msg);load()},
+  tostock:d=>{S.dlg={type:'tostock',id:d.id};renderDlg()},
+  /* One database call does the whole move (stock rows created, this part marked) or none of it. */
+  movestock:async(d,el)=>{const p=part(d.id);el.disabled=true;
+    const {data,error}=await SB.rpc('part_to_stock',{p_part:d.id,p_location:$('ts-loc').value,p_purpose:$('ts-purpose').value,p_bin:$('ts-bin').value.trim()||null});
+    if(error){el.disabled=false;toast(error.message,true);return}
+    const tags=data||[];closeDlg();toast(`${p.tag} moved to stock as ${tags.length>1?tags[0]+' to '+tags[tags.length-1]:tags[0]}. Print the new tag from the Stock page.`);load()},
   vadd:async()=>{const el=$('vn-new'),name=el.value.trim();if(!name)return;const {error}=await SB.from('vendors').insert({name});if(error){toast(error.message,true);return}toast('Vendor added.');await load()}
 };
 
