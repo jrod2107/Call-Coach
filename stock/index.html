@@ -271,7 +271,7 @@ function vMain(){
    <select id="locf" aria-label="Location"><option value="">All locations</option>${locOpts(S.loc)}</select>
    <span class="grow"></span>
    <button class="primary" data-a="scan">Scan parts in</button>
-   ${office()?'<button data-a="locs">Locations</button>':''}
+   ${office()?'<button data-a="invoice">Receive invoice</button><button data-a="locs">Locations</button>':''}
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
@@ -367,14 +367,140 @@ function dLocs(){
       <td><input type="checkbox" style="width:auto" data-locactive="${l.id}" ${l.active?'checked':''} aria-label="${esc(l.name)} in use"></td></tr>`).join('')}</tbody></table></div>
    <div class="row"><input id="ln-name" placeholder="e.g. Truck – Jules" style="flex:1;min-width:160px" aria-label="New location name">
     <select id="ln-kind" style="width:auto" aria-label="Kind"><option value="truck">Truck</option><option value="shop">Shop</option></select><button data-a="locadd">Add location</button></div></div>`}
+/* ---------- receive an invoice (office only) ----------
+   A photo or PDF of a parts-house invoice is read by the invoice-read function, which only returns the lines.
+   Each line is matched to an open job part on the Parts desk by part number. A match is received for that job;
+   anything else must be sent to Stock or skipped by the person reviewing. Nothing is saved until they confirm. */
+const OPEN_PART=['need_to_order','ordered','backordered','shipped'];
+const normPn=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.toLocaleDateString('en-CA')};
+function invCands(line){
+  const v=S.inv,key=normPn(line.pn);if(!key)return[];
+  const refs=[v.head.order_number,v.head.po_number].map(normPn).filter(Boolean),ref=String(line.ref||'');
+  const score=p=>(p.job_number&&ref.includes(p.job_number)?4:0)+([p.vendor_order_no,p.po_number].map(normPn).some(x=>x&&refs.includes(x))?2:0)+(p.status==='need_to_order'?0:1);
+  return v.open.filter(p=>normPn(p.part_number)===key).sort((a,b)=>score(b)-score(a)||String(a.created_at).localeCompare(String(b.created_at)));
+}
+function invAssign(){
+  const taken=new Set();
+  for(const l of S.inv.lines){
+    l.cands=invCands(l);
+    if(l.dest&&l.dest.startsWith('part:')&&!l.cands.some(p=>'part:'+p.id===l.dest))l.dest='';
+    if(!l.dest){const p=l.cands.find(p=>!taken.has(p.id));l.dest=p?'part:'+p.id:/\bstock\b/i.test(l.ref||'')?'stock':''}
+    if(l.dest.startsWith('part:'))taken.add(l.dest.slice(5));
+  }
+}
+function fileToPart(file){
+  return new Promise((res,rej)=>{
+    if(file.type==='application/pdf'){
+      if(file.size>9e6){rej(new Error(file.name+' is too large. Use a PDF under 9 MB.'));return}
+      const fr=new FileReader();fr.onload=()=>res({media_type:'application/pdf',data:String(fr.result).split(',')[1]});fr.onerror=()=>rej(new Error('Could not read '+file.name));fr.readAsDataURL(file);return}
+    if(!/^image\//.test(file.type)){rej(new Error(file.name+' is not a photo or a PDF.'));return}
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{const k=Math.min(1,2200/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);res({media_type:'image/jpeg',data:c.toDataURL('image/jpeg',.85).split(',')[1]})};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('Could not open '+file.name+'. Try a JPEG or PNG photo.'))};img.src=url;
+  });
+}
+async function invRead(){
+  const v=S.inv;if(!v.files.length){toast('Add a photo or PDF of the invoice first.',true);return}
+  v.step='reading';v.err='';renderDlg();
+  try{
+    const files=await Promise.all(v.files.slice(0,6).map(fileToPart));
+    const {data:{session}}=await SB.auth.getSession();if(!session)throw new Error('Your sign-in expired. Reload the page.');
+    const [r,open]=await Promise.all([
+      fetch(CFG.supabaseUrl+'/functions/v1/invoice-read',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:CFG.supabaseAnonKey},body:JSON.stringify({files})}),
+      one(SB.from('parts').select('id,tag,job_number,customer_name,part_number,description,qty,status,cost,notes,po_number,vendor_order_no,created_at,vendors(name,return_days)').in('status',OPEN_PART).limit(1000))]);
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||!j.data)throw new Error(j&&j.error||'The invoice could not be read.');
+    if(j.data.error||!Array.isArray(j.data.lines)||!j.data.lines.length)throw new Error('No part lines were found. Check that the photo shows the whole invoice and is in focus.');
+    const d=j.data,str=x=>String(x==null?'':x).trim();
+    v.head={vendor:str(d.vendor),invoice_number:str(d.invoice_number),order_number:str(d.order_number),po_number:str(d.po_number)};
+    v.open=open;
+    v.lines=d.lines.map(l=>({pn:str(l.part_number).toUpperCase().replace(/\s+/g,''),desc:str(l.description),qty:Math.max(0,parseInt(l.qty_shipped,10)||0),bo:Math.max(0,parseInt(l.qty_backordered,10)||0),
+      cost:l.unit_cost==null||l.unit_cost===''?'':String(l.unit_cost),ref:str(l.line_ref),unsure:!!l.unsure,dest:'',cands:[]}));
+    v.lines.forEach(l=>{if(!l.qty)l.dest='skip'});
+    invAssign();
+    v.dup='';const no=v.head.invoice_number.replace(/[^A-Za-z0-9\-]/g,'');
+    if(no){const [a,b]=await Promise.all([one(SB.from('stock_items').select('id').ilike('notes','%Invoice '+no+'%').limit(1)),one(SB.from('parts').select('id').ilike('notes','%invoice '+no+'%').limit(1))]);
+      if(a.length||b.length)v.dup='Invoice '+no+' looks like it was already received. Check before saving it again.'}
+    v.step='review';
+  }catch(e){v.step='pick';v.err=e.message||String(e)}
+  renderDlg();
+}
+async function invSave(){
+  const v=S.inv,bad=v.lines.find(l=>!l.dest||(l.dest!=='skip'&&(!normPn(l.pn)||!(parseInt(l.qty,10)>0))));
+  if(bad){toast(!bad.dest?'Choose where every line goes: a job, Stock or Skip.':'Every line being received needs a part number and a quantity.',true);return}
+  const dests=v.lines.map(l=>l.dest).filter(d=>d.startsWith('part:'));
+  if(new Set(dests).size!==dests.length){toast('Two lines are set to the same job part. Change one of them.',true);return}
+  if(!v.loc){toast('Pick the location stock goes to.',true);return}
+  v.step='saving';renderDlg();
+  const inv=v.head.invoice_number,tagNote='Invoice '+(inv||'(no number)')+(v.head.vendor?' from '+v.head.vendor:''),res={jobs:[],stock:[],fail:[]};
+  const toStock=async(l,n)=>{
+    const pn=l.pn.trim().toUpperCase();
+    let {error}=await SB.from('stock_catalog').upsert({part_number:pn,description:l.desc,brand:''},{onConflict:'part_number',ignoreDuplicates:true});
+    if(!error){const keep=/\bstock\b/i.test(l.ref||'')||S.plan.some(p=>p.part_number===pn);
+      const r=await SB.from('stock_items').insert(Array.from({length:n},()=>({part_number:pn,location_id:v.loc,purpose:keep?'keep':'undecided',condition:'new',cost:numOrNull(l.cost),vendor:v.head.vendor||null,notes:tagNote}))).select('*');
+      error=r.error;if(r.data)res.stock.push(...r.data)}
+    if(error)res.fail.push(pn+': '+error.message);
+  };
+  for(const l of v.lines){
+    if(l.dest==='skip')continue;
+    const qty=Math.min(200,parseInt(l.qty,10));
+    if(l.dest==='stock'){await toStock(l,qty);continue}
+    const p=v.open.find(x=>'part:'+x.id===l.dest),rd=p.vendors&&p.vendors.return_days;
+    const patch={status:'received',received_on:today(),return_by:rd!=null?addDays(today(),rd):null,notes:[p.notes,'Received on i'+tagNote.slice(1)+'.'].filter(Boolean).join('\n')};
+    if(p.cost==null&&numOrNull(l.cost)!=null)patch.cost=numOrNull(l.cost);
+    const {data,error}=await SB.from('parts').update(patch).eq('id',p.id).in('status',OPEN_PART).select('id');
+    if(error||!data.length){res.fail.push(p.tag+': '+(error?error.message:'someone already changed this part, so it was left alone'));continue}
+    res.jobs.push(p);
+    if(qty>p.qty)await toStock(l,qty-p.qty);
+  }
+  v.result=res;v.step='done';renderDlg();load();
+}
+function dInvoice(){
+  const v=S.inv,head=`<div class="dhead"><h2>Receive an invoice</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>`;
+  if(v.step==='pick'||v.step==='reading')return head+`<div class="dbody">
+    <p class="muted" style="margin:0">Take a photo of the invoice or packing slip, or choose a PDF. Each line is matched to the job part it was ordered for. Anything else you send to Stock or skip. Nothing is saved until you confirm.</p>
+    ${v.err?`<div class="notice bad">${esc(v.err)}</div>`:''}
+    <label class="fld"><span>Invoice photo or PDF (up to 6 pages)</span><input id="inv-files" type="file" accept="image/*,application/pdf" multiple></label>
+    ${v.files.length?`<div class="muted">${v.files.map(f=>esc(f.name)).join(', ')}</div>`:''}
+    <label class="fld" style="max-width:260px"><span>Stock parts go to</span><select id="inv-loc">${locOpts(v.loc)}</select></label></div>
+   <div class="dfoot"><button data-a="close">Cancel</button><span class="grow"></span><button class="primary" data-a="invread" ${v.step==='reading'?'disabled':''}>${v.step==='reading'?'Reading the invoice…':'Read the invoice'}</button></div>`;
+  if(v.step==='done'){const r=v.result,tags=r.stock.map(s=>s.tag).sort();
+    return head+`<div class="dbody">
+     ${r.fail.length?`<div class="notice bad"><b>${r.fail.length} line${r.fail.length>1?'s':''} did not save.</b><br>${r.fail.map(esc).join('<br>')}</div>`:''}
+     <div class="notice good"><b>${r.jobs.length}</b> job part${r.jobs.length===1?'':'s'} received${r.jobs.length?': '+r.jobs.map(p=>esc(p.tag)+' for job #'+esc(p.job_number)).join(', '):''}.<br>
+      <b>${r.stock.length}</b> part${r.stock.length===1?'':'s'} added to stock at ${esc(locName(v.loc))}${tags.length?' ('+esc(tags.length>1?tags[0]+' to '+tags[tags.length-1]:tags[0])+')':''}.</div>
+     ${r.jobs.length?'<p class="muted" style="margin:0">Job parts are now under Received on the Parts desk, where their tags can be printed.</p>':''}</div>
+    <div class="dfoot">${r.jobs.length?'<a href="../parts/">Open Parts desk</a>':''}<span class="grow"></span>${r.stock.length?'<button data-a="invprint">Print stock tags</button>':''}<button class="primary" data-a="close">Done</button></div>`}
+  const h=v.head,saving=v.step==='saving',todo=v.lines.filter(l=>!l.dest).length;
+  return head+`<div class="dbody">
+    <div><b>${esc(h.vendor||'Vendor not read')}</b> · Invoice ${esc(h.invoice_number||'not read')}${h.order_number?' · Order '+esc(h.order_number):''}${h.po_number?' · PO '+esc(h.po_number):''}</div>
+    ${v.dup?`<div class="notice bad">${esc(v.dup)}</div>`:''}
+    ${todo?`<div class="notice"><b>${todo} line${todo>1?'s':''} need${todo>1?'':'s'} a choice.</b> No open job part matched, so pick Stock or Skip for each.</div>`:''}
+    <div class="scroll"><table><thead><tr><th>Part number</th><th class="num">Qty</th><th class="num">Cost each</th><th>On the invoice</th><th>Goes to</th></tr></thead><tbody>
+     ${v.lines.map((l,i)=>{const p=l.dest.startsWith('part:')&&l.cands.find(x=>'part:'+x.id===l.dest),extra=p?parseInt(l.qty,10)-p.qty:0;
+       return `<tr><td><input class="mono" data-inv="${i}:pn" value="${esc(l.pn)}" aria-label="Part number" style="min-width:130px"><br><span class="muted">${esc(l.desc)}</span>${l.unsure?'<br>'+pill('Hard to read, check it','warn'):''}</td>
+        <td class="num"><input type="number" min="0" inputmode="numeric" data-inv="${i}:qty" value="${esc(l.qty)}" aria-label="Quantity" style="width:64px">${l.bo?`<br><span class="muted">${l.bo} backordered</span>`:''}</td>
+        <td class="num"><input type="number" min="0" step="0.01" inputmode="decimal" data-inv="${i}:cost" value="${esc(l.cost)}" aria-label="Cost each" style="width:86px"></td>
+        <td>${esc(l.ref)||'<span class="muted">—</span>'}</td>
+        <td><select data-inv="${i}:dest" aria-label="Goes to" ${l.dest?'':'style="border-color:var(--warn)"'}><option value="">Choose…</option>
+          ${l.cands.map(c=>`<option value="part:${c.id}" ${l.dest==='part:'+c.id?'selected':''}>Job #${esc(c.job_number)} · ${esc(c.tag)}${c.customer_name?' · '+esc(c.customer_name):''}</option>`).join('')}
+          <option value="stock" ${l.dest==='stock'?'selected':''}>Stock</option><option value="skip" ${l.dest==='skip'?'selected':''}>Skip this line</option></select>
+          ${extra>0?`<br><span class="muted">Job needs ${p.qty}. The other ${extra} go${extra===1?'es':''} to stock.</span>`:''}
+          ${p&&extra<0?`<br><span class="muted">Job needs ${p.qty}, only ${esc(l.qty)} came.</span>`:''}</td></tr>`}).join('')}</tbody></table></div>
+    <label class="fld" style="max-width:260px"><span>Stock parts go to</span><select id="inv-loc">${locOpts(v.loc)}</select></label></div>
+   <div class="dfoot"><button data-a="invback" ${saving?'disabled':''}>Start over</button><span class="grow"></span><button class="primary" data-a="invsave" ${saving?'disabled':''}>${saving?'Saving…':'Confirm and receive'}</button></div>`;
+}
 function renderDlg(){
   const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
-  if(S.dlg.type==='scan'){if(!$('scanform'))d.innerHTML=dScanShell();$('scanform').innerHTML=scanForm()}
+  if(S.dlg.type==='invoice')d.innerHTML=dInvoice();
+  else if(S.dlg.type==='scan'){if(!$('scanform'))d.innerHTML=dScanShell();$('scanform').innerHTML=scanForm()}
   else if(S.dlg.type==='locs')d.innerHTML=dLocs();
   else{const u=S.dlg.unit&&item(S.dlg.unit);d.innerHTML=u?dUnit(u):dPart(S.dlg.pn)}
   if(!d.open)d.showModal();
 }
-async function closeDlg(){await camStop();S.dlg=null;S.scan=null;const d=$('dlg');d.innerHTML='';if(d.open)d.close()}
+async function closeDlg(){await camStop();S.dlg=null;S.scan=null;S.inv=null;const d=$('dlg');d.innerHTML='';if(d.open)d.close()}
 async function openUnit(id){
   const u=item(id);if(!u)return;
   await camStop();S.scan=null;S.dlg={type:'part',pn:u.part_number,unit:id};S.events=[];$('dlg').innerHTML='';renderDlg();
@@ -438,6 +564,17 @@ const A={
     if(d&&d.pn)setScanPn(d.pn);
     S.dlg={type:'scan'};$('dlg').innerHTML='';renderDlg();
   },
+  invoice:()=>{
+    if(!office())return;
+    const shop=S.locs.find(l=>l.active&&l.kind==='shop')||S.locs.find(l=>l.active);
+    if(!shop){toast('Add a location first.',true);return}
+    S.inv={step:'pick',loc:S.loc||shop.id,files:[],head:{},lines:[],open:[],err:'',dup:'',result:null};
+    S.dlg={type:'invoice'};$('dlg').innerHTML='';renderDlg();
+  },
+  invread:()=>invRead(),
+  invsave:()=>invSave(),
+  invback:()=>{Object.assign(S.inv,{step:'pick',files:[],lines:[],err:'',dup:''});renderDlg()},
+  invprint:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)printTags(r.stock)},
   camstart:()=>camStart(),
   camstop:async()=>{await camStop();renderDlg()},
   camnext:()=>{S.scan.pn='';S.scan.description='';S.scan.brand='';S.scan.known=false;camResume();renderDlg()},
@@ -517,9 +654,18 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!
   A[el.dataset.a](el.dataset,el)});
 document.addEventListener('input',e=>{const el=e.target;
   if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
+  if(el.dataset.inv&&S.inv){const [i,k]=el.dataset.inv.split(':');if(k!=='dest'&&S.inv.lines[i])S.inv.lines[i][k]=el.value}
   if(el.dataset.scan&&S.scan)S.scan[el.dataset.scan]=el.value});
 document.addEventListener('change',async e=>{const el=e.target;
   if(el.id==='locf'){S.loc=el.value;render();return}
+  if(S.inv){
+    if(el.id==='inv-files'){S.inv.files=[...el.files];S.inv.err='';renderDlg();return}
+    if(el.id==='inv-loc'){S.inv.loc=el.value;return}
+    if(el.dataset.inv){const [i,k]=el.dataset.inv.split(':'),l=S.inv.lines[i];if(!l)return;
+      if(k==='dest')l.dest=el.value;
+      if(k==='pn'){l.pn=el.value.trim().toUpperCase();l.unsure=false;if(l.dest.startsWith('part:'))l.dest='';invAssign()}
+      renderDlg();return}
+  }
   if(el.dataset.scan==='pn'&&S.scan){setScanPn(el.value.trim().toUpperCase());renderDlg();return}
   if(el.dataset.plan){const k=el.dataset.k,val=Math.max(0,parseInt(el.value,10)||0),pn=el.dataset.plan,loc=el.dataset.loc,cur=planFor(pn,loc)[0]||{min_qty:0,on_order:0};
     const row={part_number:pn,location_id:loc,min_qty:cur.min_qty,on_order:cur.on_order,[k]:val};
@@ -535,7 +681,7 @@ document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.p
   const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())load()});
-$('dlg').addEventListener('close',()=>{camStop();S.dlg=null;S.scan=null});
+$('dlg').addEventListener('close',()=>{camStop();S.dlg=null;S.scan=null;S.inv=null});
 window.addEventListener('focus',()=>{if(S.session&&allowed()&&!S.dlg&&!S.loading)load()});
 
 function render(){
