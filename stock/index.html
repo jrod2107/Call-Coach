@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#1e40af">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <title>City Appliance — Stock</title>
 <style>
 :root{
@@ -74,7 +77,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .dfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
 .hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
 #reader{width:100%;max-width:520px;margin:0 auto;border-radius:var(--r);overflow:hidden;background:#000}
-#reader:empty{display:none}
+/* The scanner measures this box when it starts, so it must never be display:none or zero wide. */
+#reader video{width:100%!important;height:auto!important;display:block}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
 #toast.bad{background:var(--bad);color:#fff}
 #print{display:none}

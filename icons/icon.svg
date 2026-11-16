@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1e40af"/>
+  <text x="256" y="300" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="230" fill="#ffffff">CA</text>
+  <text x="256" y="400" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="76" letter-spacing="14" fill="#c7d6ff">HUB</text>
+</svg>
