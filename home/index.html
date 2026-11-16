@@ -24,6 +24,9 @@ h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute
 .muted{color:var(--muted)} .grow{flex:1}
 .top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .top .who{font-size:12px;opacity:.9}
+.tools{display:flex;flex-wrap:wrap;gap:4px}
+.tools a{color:#fff;text-decoration:none;font-weight:600;padding:6px 11px;border-radius:var(--r);background:rgba(255,255,255,.14)}
+.tools a:hover{background:rgba(255,255,255,.28)}
 .wrap{max-width:1080px;margin:0 auto;padding:22px 16px 60px}
 button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -128,13 +131,13 @@ function vTeam(){
 }
 function vHome(){
   const first=(S.me.display_name||'').split(' ')[0];
-  return `<header class="top"><h1>City Appliance</h1><span class="grow"></span>
+  return `<header class="top"><h1>City Appliance</h1>
+    <nav class="tools" aria-label="Tools">${TOOLS.filter(t=>t.roles.includes(S.me.role)).map(t=>`<a href="${t.href}" title="${t.desc}">${t.name}</a>`).join('')}</nav><span class="grow"></span>
     <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
     <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[S.me.role]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap"><h2>${first?'Hi, '+esc(first):'Home'}</h2><p class="muted">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
    ${S.err?`<div class="notice">Some numbers could not be loaded: ${esc(S.err)}</div>`:''}
    ${vAttention()}
-   <h3>Tools</h3><div class="grid">${TOOLS.filter(t=>t.roles.includes(S.me.role)).map(t=>`<a class="tile" href="${t.href}"><b>${t.name}</b><span class="muted">${t.desc}</span></a>`).join('')}</div>
    ${vTeam()}</div>`;
 }
 function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
