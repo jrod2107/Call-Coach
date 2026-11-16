@@ -121,6 +121,9 @@ const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const part=id=>S.parts.find(p=>p.id===id);
 const isOther=v=>!!v&&/^other$/i.test(v.name);
 const vname=p=>p.vendors?(isOther(p.vendors)&&p.vendor_other?p.vendor_other:p.vendors.name):'';
+/* What the requester suggested: a vendor they already checked, and where. */
+const sugText=p=>{const v=S.vendors.find(x=>x.id===p.suggested_vendor_id);return [v&&v.name,p.suggested_note].filter(Boolean).join(' · ')};
+const pickOf=p=>S.pick[p.id]||(p&&p.suggested_vendor_id?{vendor:p.suggested_vendor_id}:{});
 const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
 
 let toastTimer;
@@ -134,7 +137,7 @@ async function whoami(){
 async function load(){
   S.loading=true;render();
   const [p,v]=await Promise.all([
-    SB.from('parts').select('*, vendors(name,return_days)').order('created_at',{ascending:false}).limit(1000),
+    SB.from('parts').select('*, vendors!parts_vendor_id_fkey(name,return_days)').order('created_at',{ascending:false}).limit(1000),
     SB.from('vendors').select('*').order('name')]);
   const l=await SB.from('stock_locations').select('id,name,kind,active').order('name');S.locs=l.data||[];
   S.loading=false;
@@ -178,7 +181,7 @@ function flags(p){
 }
 function rowActions(p){
   const o=office();
-  if(p.status==='need_to_order'){if(!o)return'';const pk=S.pick[p.id]||{},ov=S.vendors.find(isOther);
+  if(p.status==='need_to_order'){if(!o)return'';const pk=pickOf(p),ov=S.vendors.find(isOther);
     return `<select data-pick="vendor" data-id="${p.id}" aria-label="Vendor"><option value="">Vendor…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${pk.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select>${ov&&pk.vendor===ov.id?` <input data-pick="other" data-id="${p.id}" value="${esc(pk.other)}" placeholder="Vendor name" aria-label="Other vendor name" style="width:130px;display:inline-block">`:''} <input class="mono" data-pick="order" data-id="${p.id}" value="${esc(pk.order)}" placeholder="Order no." aria-label="Vendor order number" style="width:118px;display:inline-block"> <button class="primary small" data-a="order" data-id="${p.id}">Mark ordered</button>`}
   if(p.status==='ordered'||p.status==='backordered')return o?`<button class="small" data-a="backorder" data-id="${p.id}">${p.status==='backordered'?'Has an ETA now':'Backordered'}</button> <button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
   if(p.status==='shipped')return o?`<button class="primary small" data-a="receive" data-id="${p.id}">Receive</button>`:'';
@@ -207,7 +210,7 @@ function vMain(){
       <td class="mono">${esc(p.tag)}</td>
       <td><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''}<br><span class="muted">${esc(p.description)}</span></td>
       <td>#${esc(p.job_number)}<br><span class="muted">${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}</span></td>
-      <td>${p.vendors?esc(vname(p)):'<span class="muted">Not ordered</span>'}${p.po_number?`<br><span class="mono muted">PO ${esc(p.po_number)}</span>`:''}${p.vendor_order_no?`<br><span class="mono muted">Order ${esc(p.vendor_order_no)}</span>`:''}${p.tracking_number?`<br><span class="mono muted">${esc(p.tracking_number)}</span>`:''}</td>
+      <td>${p.vendors?esc(vname(p)):'<span class="muted">Not ordered</span>'}${p.status==='need_to_order'&&sugText(p)?`<br>${pill('Suggested','info')} ${esc(sugText(p))}`:''}${p.po_number?`<br><span class="mono muted">PO ${esc(p.po_number)}</span>`:''}${p.vendor_order_no?`<br><span class="mono muted">Order ${esc(p.vendor_order_no)}</span>`:''}${p.tracking_number?`<br><span class="mono muted">${esc(p.tracking_number)}</span>`:''}</td>
       <td>${pill(LABEL[p.status],TONE[p.status])} ${flags(p)}${p.eta&&['ordered','shipped'].includes(p.status)?`<br><span class="muted">ETA ${fmtDate(p.eta)}</span>`:''}${p.requested_by_name?`<br><span class="muted">Requested by ${esc(p.requested_by_name)}</span>`:''}</td>
       <td class="act">${rowActions(p)}</td></tr>`).join('')}</tbody></table></div>`
      :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':'Nothing in this queue.'}</div>`}</div>
@@ -219,7 +222,7 @@ function dPart(p){
   const f=(label,k,cls,attrs)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="pf-${k}" value="${esc(p[k])}" ${attrs||''} ${ro}></label>`;
   return `<div class="dhead"><h2 class="mono">${esc(p.tag)}</h2>${pill(LABEL[p.status],TONE[p.status])}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody">
-   <div><b>#${esc(p.job_number)}</b> ${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}<br><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''} ${flags(p)}</div>
+   <div><b>#${esc(p.job_number)}</b> ${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}<br><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''} ${flags(p)}${sugText(p)?`<br><span class="muted">${esc(p.requested_by_name||'Requester')} suggested ordering from:</span> ${esc(sugText(p))}`:''}</div>
    <div class="fields">${f('Description','description','wide')}${f('Quantity','qty','','type="number" min="1"')}
     <label class="fld"><span>Vendor</span><select id="pf-vendor_id" ${ro}><option value="">Not chosen</option>${S.vendors.map(v=>`<option value="${v.id}" ${p.vendor_id===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
     ${f('Vendor name, if Other','vendor_other')}${f('PO number','po_number','','class="mono"')}${f('Vendor order number','vendor_order_no','','class="mono"')}${f('Tracking number','tracking_number','','class="mono"')}
@@ -241,7 +244,9 @@ function dRequest(){
       :r.custs?`<div class="hits" style="margin-top:8px">${r.custs.length?r.custs.map((c,i)=>`<button class="hit" data-a="hcust" data-i="${i}"><b>${esc([c.first_name,c.last_name].filter(Boolean).join(' ')||c.company||'(no name)')}</b> <span class="muted">${esc([c.mobile_number,c.home_number,c.email].filter(Boolean).join(' · '))}</span></button>`).join(''):'<span class="muted">No customers found.</span>'}</div>`:''}</div>`:''}
    <div class="fields">${f('Job number *','job_number','','class="mono"')}${f('Customer name','customer_name')}${f('Appliance','appliance','','placeholder="e.g. Whirlpool dryer"')}
     ${f('Part number *','part_number','','class="mono"')}${f('What is it','description','','placeholder="e.g. heating element"')}${f('Quantity','qty','','type="number" min="1"')}
-    <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes">${esc(r.notes)}</textarea></label></div>
+    ${o&&r.ordered?'':`<label class="fld"><span>Suggested vendor, if you checked</span><select id="rq-sug_vendor" data-req="sug_vendor"><option value="">No suggestion</option>${S.vendors.filter(v=>v.active&&!isOther(v)).map(v=>`<option value="${v.id}" ${r.sug_vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
+    ${f('Branch, or where you saw it in stock','sug_note','wide','placeholder="e.g. 2 on the shelf at the San Marcos counter, can pick up today"')}`}
+    <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes" placeholder="e.g. what the customer was told: return visit to install on Thursday">${esc(r.notes)}</textarea></label></div>
    ${r.stock&&r.stock.n?`<div class="notice" style="margin:0"><b>${r.stock.n} of ${esc(r.stock.pn)} already in stock</b> (${esc(r.stock.where)}). <a href="../stock/" style="color:inherit">Open Stock</a> to hold one for this job instead of ordering.</div>`:''}
    ${o?`<label class="row"><input type="checkbox" id="rq-ordered" data-reqcheck="1" ${r.ordered?'checked':''} style="width:auto"><span>This part has already been ordered</span></label>
     ${r.ordered?`<div class="fields"><label class="fld"><span>Vendor *</span><select id="rq-vendor" data-req="vendor"><option value="">Choose…</option>${S.vendors.filter(v=>v.active).map(v=>`<option value="${v.id}" ${r.vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
@@ -297,9 +302,9 @@ const A={
   signout:async()=>{await SB.auth.signOut();location.reload()},
   open:d=>openPart(d.id),
   close:()=>closeDlg(),
-  request:()=>{S.req={hq:'',job_number:'',hcp_job_id:null,customer_name:'',appliance:'',part_number:'',description:'',qty:1,notes:'',custs:null,jobs:null,custName:'',busy:false,msg:'',ordered:false,vendor:'',other:'',order:'',tracking:'',eta:''};S.dlg={type:'request'};renderDlg()},
+  request:()=>{S.req={hq:'',job_number:'',hcp_job_id:null,customer_name:'',appliance:'',part_number:'',description:'',qty:1,notes:'',sug_vendor:'',sug_note:'',custs:null,jobs:null,custName:'',busy:false,msg:'',ordered:false,vendor:'',other:'',order:'',tracking:'',eta:''};S.dlg={type:'request'};renderDlg()},
   vendors:()=>{S.dlg={type:'vendors'};renderDlg()},
-  order:async d=>{const p=part(d.id),pk=S.pick[p.id]||{},v=S.vendors.find(x=>x.id===pk.vendor);if(!v){toast('Pick the vendor first.',true);return}
+  order:async d=>{const p=part(d.id),pk=pickOf(p),v=S.vendors.find(x=>x.id===pk.vendor);if(!v){toast('Pick the vendor first.',true);return}
     const other=isOther(v)?(pk.other||'').trim():null;if(isOther(v)&&!other){toast('Type the vendor name for Other.',true);return}
     const name=other||v.name,po=/amazon/i.test(name)?null:`${p.job_number}-${lastName(p.customer_name)}`.replace(/-$/,''),ono=(pk.order||'').trim()||null;
     if(await upd(p.id,{status:'ordered',vendor_id:v.id,vendor_other:other,vendor_order_no:ono,po_number:po,ordered_on:today()},`Marked ordered from ${name}.`+(po?` PO ${po}.`:'')+(ono?` Order ${ono}.`:'')))delete S.pick[p.id]},
@@ -330,6 +335,7 @@ const A={
   submit:async()=>{const r=S.req;if(!r.job_number.trim()||!r.part_number.trim()){toast('Job number and part number are required.',true);return}
     const row={job_number:r.job_number.trim(),hcp_job_id:r.hcp_job_id,customer_name:r.customer_name.trim(),appliance:r.appliance.trim(),
       part_number:r.part_number.trim().toUpperCase(),description:r.description.trim(),qty:Math.max(1,parseInt(r.qty,10)||1),notes:r.notes.trim()||null};
+    if(!(office()&&r.ordered)){row.suggested_vendor_id=r.sug_vendor||null;row.suggested_note=r.sug_note.trim()||null}
     let tab='need',msg='Request sent. It is under Need to order.';
     if(office()&&r.ordered){const v=S.vendors.find(x=>x.id===r.vendor);if(!v){toast('Pick the vendor it was ordered from.',true);return}
       const other=isOther(v)?r.other.trim():null;if(isOther(v)&&!other){toast('Type the vendor name for Other.',true);return}
@@ -354,10 +360,10 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!
   A[el.dataset.a](el.dataset,el)});
 document.addEventListener('input',e=>{const el=e.target;
   if(el.id==='q'){S.q=el.value;const pos=el.selectionStart;render();const n=$('q');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}}
-  if(el.dataset.pick)(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{})[el.dataset.pick]=el.value;
+  if(el.dataset.pick)(S.pick[el.dataset.id]=S.pick[el.dataset.id]||Object.assign({},pickOf(part(el.dataset.id))))[el.dataset.pick]=el.value;
   if(el.dataset.req&&S.req)S.req[el.dataset.req]=el.value});
 document.addEventListener('change',async e=>{const el=e.target;
-  if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||{}).vendor=el.value;render();return}
+  if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||Object.assign({},pickOf(part(el.dataset.id)))).vendor=el.value;render();return}
   if(el.dataset.reqcheck&&S.req){S.req.ordered=el.checked;renderDlg();return}
   if(el.dataset.req==='vendor'&&S.req){S.req.vendor=el.value;renderDlg();return}
   /* Stock check: before a part goes to ordering, see whether one is already on a shelf or truck. */
