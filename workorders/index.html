@@ -129,6 +129,7 @@ const APPROVAL={not_needed:'Not needed',needed:'Needed, not asked yet',requested
 const EV={call:'Called',voicemail:'Left voicemail',text:'Texted',email:'Emailed',note:'Note',status:''};
 const OPEN=['new','contacting','booked'];
 const TABS=[
+  ['review','To review',w=>w.status==='draft'],
   ['tobook','To book',w=>['new','contacting'].includes(w.status)],
   ['booked','Booked',w=>w.status==='booked'&&!w.invoice_sent_on],
   ['approval','Waiting on approval',w=>OPEN.includes(w.status)&&['needed','requested'].includes(w.approval)],
@@ -137,7 +138,7 @@ const TABS=[
   ['closed','Cancelled',w=>w.status==='cancelled']];
 const BLANK={source_kind:'property_manager',source_name:'',source_ref:'',received_via:'email',received_on:'',portal_note:'',contact_name:'',contact_phone:'',contact_phone2:'',contact_email:'',
   street:'',unit:'',city:'',zip:'',appliance:'',issue:'',original_text:'',nte:'',notes:'',approval:'not_needed',approval_amount:'',invoice_number:'',invoice_amount:'',invoice_sent_on:'',paid_on:'',portal_updated:false,hcp_job_number:''};
-const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null}};
+const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null},mail:{errs:[],busy:false,msg:''}};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const wo=id=>S.rows.find(w=>w.id===id);
 const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
@@ -160,6 +161,8 @@ async function load(){
     SB.from('work_order_events').select('work_order_id,at,kind,note').neq('kind','status').order('at',{ascending:false}).limit(1000),
     SB.from('intakes').select('id,created_at,csr,outcome,customer,units,hcp_job_id').gte('created_at',since).order('created_at',{ascending:false}).limit(200)]);
   S.loading=false;
+  const me=await SB.from('work_order_mail').select('subject,received_at').eq('outcome','error').gte('attempts',3).gte('created_at',new Date(Date.now()-7*864e5).toISOString()).order('received_at');
+  S.mail.errs=me.error?[]:(me.data||[]);
   const bad=[w,e,i].find(r=>r.error);
   if(bad)S.err=bad.error.message;else{S.err='';S.rows=w.data||[];S.intakes=i.data||[];S.last={};for(const ev of (e.data||[]))if(!S.last[ev.work_order_id])S.last[ev.work_order_id]=ev}
   render();if(S.dlg&&S.dlg.type==='wo'&&S.dlg.id)renderDlg();
@@ -187,6 +190,7 @@ function vWaiting(){return `<div class="card"><h2>Office only</h2>
   <a class="btn" href="../home/" style="text-align:center;text-decoration:none">Back to Home</a><button data-a="signout">Sign out</button></div>`}
 function stageCell(w){
   const out=[];
+  if(w.status==='draft')out.push(pill('Needs review','warn'));
   if(w.status==='new')out.push(pill('Not contacted yet','warn'));
   if(w.status==='contacting')out.push(pill('Trying to reach them','info'));
   if(w.status==='booked')out.push(pill('Booked'+(w.hcp_job_number?' · job #'+w.hcp_job_number:''),'good'));
@@ -199,6 +203,13 @@ function stageCell(w){
   if(w.portal_note&&!w.portal_updated&&['booked','done'].includes(w.status))out.push(pill('Their portal needs updating','warn'));
   return out.join(' ');
 }
+/* Drafts are work orders the mail collector (work-order-collect) read from the office mailbox. A person confirms each one. */
+function reviewBar(){const m=S.mail,n=m.errs.length;
+  return `<div class="row" style="margin:0 0 10px"><span class="muted">Work orders emailed by property managers are collected here automatically. Check each one against the original, then confirm it.</span><span class="grow"></span>
+    ${S.me.role==='admin'?`<button class="small" data-a="checkmail">${m.busy?'Checking…':'Check the mailbox now'}</button>`:''}</div>
+   ${m.msg?`<div class="notice info" style="margin-bottom:10px">${esc(m.msg)}</div>`:''}
+   ${n?`<div class="notice bad" style="margin-bottom:10px"><b>${n} email${n===1?'':'s'} could not be read automatically.</b> Find ${n===1?'it':'them'} in the mailbox and enter ${n===1?'it':'them'} with + New work order:
+    <ul style="margin:6px 0 0 18px">${m.errs.map(e=>`<li>${esc(e.subject||'(no subject)')} · received ${fmtWhen(e.received_at)}</li>`).join('')}</ul></div>`:''}`}
 function vMain(){
   const q=S.q.trim().toLowerCase();
   const match=w=>!q||[w.ref,w.source_name,w.source_ref,w.contact_name,w.contact_phone,w.contact_phone2,addr(w),w.appliance,w.issue,w.hcp_job_number,w.invoice_number].join(' ').toLowerCase().includes(q);
@@ -211,15 +222,16 @@ function vMain(){
    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load work orders: ${esc(S.err)}</div>`:''}
-   <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['tobook','approval','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['review','tobook','approval','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   ${S.tab==='review'?reviewBar():''}
    <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Number</th><th>Sent by</th><th>Who to contact</th><th>Appliance and problem</th><th>Where it stands</th></tr></thead><tbody>
     ${rows.map(w=>{const lc=S.last[w.id],d=daysSince(w.received_on);return `<tr data-a="open" data-id="${w.id}">
       <td class="mono">${esc(w.ref)}</td>
       <td>${esc(w.source_name)}<br><span class="muted">${esc(KIND[w.source_kind])}${w.source_ref?' · '+esc(w.source_ref):''}</span></td>
       <td>${esc(w.contact_name||'No name')}${w.contact_phone?`<br><a href="tel:${esc(digits(w.contact_phone))}">${esc(w.contact_phone)}</a>`:''}${addr(w)?`<br><span class="muted">${esc(addr(w))}</span>`:''}</td>
       <td>${esc(w.appliance||'')}${w.issue?`<br><span class="muted">${esc(String(w.issue).slice(0,110))}${String(w.issue).length>110?'…':''}</span>`:''}</td>
-      <td>${stageCell(w)}${['new','contacting'].includes(w.status)?`<br><span class="muted">Received ${d===0?'today':d+' day'+(d===1?'':'s')+' ago'}${lc?' · last: '+esc((EV[lc.kind]||'Note').toLowerCase())+' '+fmtWhen(lc.at):''}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`
-     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':S.tab==='tobook'?'No work orders waiting to be booked.':'Nothing in this list.'}</div>`}</div>
+      <td>${stageCell(w)}${['draft','new','contacting'].includes(w.status)?`<br><span class="muted">Received ${d===0?'today':d+' day'+(d===1?'':'s')+' ago'}${lc?' · last: '+esc((EV[lc.kind]||'Note').toLowerCase())+' '+fmtWhen(lc.at):''}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`
+     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':S.tab==='review'?'Nothing waiting for review.':S.tab==='tobook'?'No work orders waiting to be booked.':'Nothing in this list.'}</div>`}</div>
   </div>`}
 
 /* ---------- dialog ---------- */
@@ -275,6 +287,16 @@ function dWo(){
   if(!w)return `<div class="dhead"><h2>New work order</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
    <div class="dbody">${importPanel()}${basics(true)}</div>
    <div class="dfoot"><button data-a="close">Cancel</button><button class="primary" data-a="create">${S.busy?'Saving…':'Save work order'}</button></div>`;
+  if(w.status==='draft')return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span>${pill('Needs review','warn')}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <div class="notice info">This arrived by email and was filled in automatically. Compare it with the original below, fix anything that is wrong or missing, then confirm it. Once confirmed it is a lead under To book.</div>
+   ${basics(true)}
+   <div><h3>Original</h3>
+    ${S.files.length?`<ul class="hist" style="margin-top:6px">${S.files.map(f=>`<li><button class="small" data-a="file" data-path="${esc(f.path)}">${esc(f.name)}</button> <span class="muted">attached to the email</span></li>`).join('')}</ul>`:''}
+    <pre style="white-space:pre-wrap;overflow:auto;max-height:280px;background:var(--sunk);padding:10px;border-radius:var(--r);margin:6px 0 0;font:inherit;font-size:13px">${esc(w.original_text||'No email text was saved.')}</pre></div>
+  </div>
+  <div class="dfoot"><button class="ghost" data-a="cancel" data-id="${w.id}">Not a work order</button><span class="grow"></span>
+   <button class="primary" data-a="confirm" data-id="${w.id}">${S.busy?'Saving…':'Looks right: move to To book'}</button></div>`;
   return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody">
    <div>${stageCell(w)}</div>
@@ -365,8 +387,22 @@ const A={
     toast(EV[d.k]+' logged.');await load();loadDetail(d.id)},
   link:async d=>{const job=String(S.edit.hcp_job_number||'').trim()||null;
     if(await upd(d.id,{status:'booked',intake_id:d.intake,hcp_job_number:job},'Booked. The intake is linked to this work order.')){S.edit.hcp_job_number=job||'';S.tab='booked';render();loadDetail(d.id)}},
-  cancel:async(d,el)=>{if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Click again to cancel it';el.style.color='var(--bad)';
-      setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.textContent='Cancel work order';el.style.color=''}},5000);return}
+  confirm:async d=>{if(S.busy)return;const row=cleaned();
+    if(!row.source_name){toast('The company that sent it cannot be blank.',true);return}
+    if(!row.contact_name&&!row.contact_phone){toast('Add the name or phone of the person to contact.',true);return}
+    row.status='new';S.busy=true;renderDlg();const ok=await upd(d.id,row,'Confirmed. It is now under To book.');S.busy=false;if(ok){closeDlg();S.tab='tobook';render()}else renderDlg()},
+  checkmail:async()=>{const m=S.mail;if(m.busy)return;m.busy=true;m.msg='';render();
+    try{const r=await fetch(CFG.supabaseUrl+'/functions/v1/work-order-collect',{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:'{}'});
+      const j=await r.json().catch(()=>null);if(!j)throw new Error('Error '+r.status);
+      if(j.configured===false)m.msg='The mailbox connection is not set up yet, so nothing was checked.';
+      else if(j.error)m.msg='The mailbox could not be checked: '+j.error;
+      else{const t=j.tally||{};m.msg=`Checked the mailbox. New to review: ${t.draft||0}. Already here: ${t.duplicate||0}. Follow-ups added as notes: ${t.update||0}. Other emails skipped: ${t.ignored||0}.`
+        +(t.error?` Could not be read: ${t.error}.`:'')+(j.more?' There is more mail to go through. Press the button again in a minute.':'')}
+    }catch(e){m.msg='The mailbox could not be checked: '+e.message}
+    m.busy=false;await load()},
+  cancel:async(d,el)=>{if(el.dataset.armed!=='1'){const was=el.textContent;el.dataset.armed='1';el.textContent='Click again to cancel it';el.style.color='var(--bad)';
+      setTimeout(()=>{if(el.isConnected){el.dataset.armed='';el.textContent=was;el.style.color=''}},5000);return}
     if(await upd(d.id,{status:'cancelled'},'Work order cancelled. It is under Cancelled.'))closeDlg()},
   reopen:async d=>{const w=wo(d.id);if(await upd(d.id,{status:w.intake_id?'booked':'contacting'},'Reopened.'))closeDlg()},
   file:async d=>{const {data,error}=await SB.storage.from('work-orders').createSignedUrl(d.path,300);

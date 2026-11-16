@@ -11,7 +11,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-collector-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const json = (body: unknown, status = 200) =>
@@ -32,6 +32,21 @@ async function isOffice(req: Request): Promise<boolean> {
   if (p.status !== 200) return false;
   const rows = (await p.json()) as Record<string, unknown>[];
   return Array.isArray(rows) && rows.length === 1 && OFFICE.includes(String(rows[0].role));
+}
+
+// The mail collector (work-order-collect) calls this too. It proves itself with the token kept in collector_config,
+// a table only the service role can read.
+async function isCollector(req: Request): Promise<boolean> {
+  const sent = req.headers.get("x-collector-token") || "";
+  const url = Deno.env.get("SUPABASE_URL"), key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!sent || !url || !key) return false;
+  const r = await fetch(`${url}/rest/v1/collector_config?key=eq.token&select=value`, { headers: { Authorization: `Bearer ${key}`, apikey: key } });
+  if (r.status !== 200) return false;
+  const rows = (await r.json()) as Record<string, unknown>[];
+  const want = String(rows?.[0]?.value || "");
+  if (!want || want.length !== sent.length) return false;
+  let d = 0; for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ sent.charCodeAt(i);
+  return d === 0;
 }
 
 const SYSTEM = `You read maintenance work orders sent to City Appliance Services, an appliance repair company in San Marcos, Texas.
@@ -78,7 +93,7 @@ const stripLinks = (s: string) => s.replace(/https?:\/\/\S+/gi, "[link removed]"
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  if (!(await isOffice(req))) return json({ error: "Reading a work order is limited to office accounts." }, 401);
+  if (!(await isCollector(req)) && !(await isOffice(req))) return json({ error: "Reading a work order is limited to office accounts." }, 401);
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return json({ error: "ANTHROPIC_API_KEY is not set" }, 500);

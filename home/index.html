@@ -120,6 +120,7 @@ function vAttention(){
       ${stat(n(p=>p.status==='received'&&p.return_by&&daysUntil(p.return_by)<=7),'Return windows closing within a week','warn','../parts/')}
       ${stat(n(p=>p.status==='returned'),'Returns still waiting on credit','warn','../parts/')}</div>
      <h3>Work orders from warranty companies and property managers</h3><div class="grid">
+      ${S.wos.some(w=>w.status==='draft')?stat(S.wos.filter(w=>w.status==='draft').length,'Arrived by email, waiting for review','warn','../workorders/'):''}
       ${stat(S.wos.filter(w=>['new','contacting'].includes(w.status)).length,'Waiting to be contacted and booked','warn','../workorders/')}
       ${stat(S.wos.filter(w=>['new','contacting','booked'].includes(w.status)&&['needed','requested'].includes(w.approval)).length,'Waiting on approval','warn','../workorders/')}
       ${stat(S.wos.filter(w=>w.status!=='cancelled'&&w.invoice_sent_on&&!w.paid_on).length,'Invoiced and not paid yet','warn','../workorders/')}</div>
