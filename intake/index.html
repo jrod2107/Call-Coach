@@ -350,7 +350,7 @@ function cooktop(){
 }
 function microwave(){
   const mount=Q("Over-the-range, wall mounted, or countertop?",["Over-the-range (above stove)","Wall mounted (set in wall)","Countertop unit"],{req:1});
-  const issue=Q("What is the main issue?",["Not heating","Making a noise","Turns on when the door is shut","Turns on when the door is opened","Error code"],{req:1,main:1,
+  const issue=Q("What is the main issue?",["Not heating","Display not working","Making a noise","Turns on when the door is shut","Turns on when the door is opened","Error code"],{req:1,main:1,
     notes:{"Turns on when the door is shut":{t:"SAFETY: advise unplugging it now. A door switch fault can run the unit unsafely.",k:"safety",flag:"MICROWAVE DOOR SWITCH FAULT — advised unplug"},
            "Turns on when the door is opened":{t:"SAFETY: advise unplugging it now. A door switch fault can run the magnetron with the door open.",k:"safety",flag:"MICROWAVE DOOR SWITCH FAULT — advised unplug"}}});
   return {name:"Microwave",qs:[mount,issue]};
@@ -558,6 +558,25 @@ function save(){try{localStorage.setItem(LS,JSON.stringify(S));}catch(e){}}
 const $=id=>document.getElementById(id);
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
+/* Every appliance's main issue list ends with "Other", and picking it opens a box to type the issue.
+   Typed issues are saved to intake_other_issues so repeat ones can be added to the list for good.
+   Created here, after every other question, so existing question ids do not shift. */
+const OTHER_Q=new Map();
+DIAG_APPLIANCES.forEach(app=>{
+  app.qs.filter(q=>q.main&&q.opts).forEach(q=>{
+    if(!q.opts.includes("Other")) q.opts.push("Other");
+    const t=Q("Other issue: what is it doing?",null,{req:1,min:6,showIf:[q.id,["Other"]],otherOf:q.id,
+      note:'Type the issue in a few words, for example "front display is blank". Issues typed here are counted so common ones can be added to the list.'});
+    app.qs.splice(app.qs.indexOf(q)+1,0,t); OTHER_Q.set(t.id,app.name);
+  });
+});
+function otherIssues(){
+  const out=[];
+  S.units.forEach(u=>{ const app=u.svc==="Install"?null:appOf(u); if(!app) return;
+    app.qs.forEach(q=>{ if(!q.otherOf) return; const main=ALLQ[q.otherOf]; const v=String(u.ans[q.id]||"").trim();
+      if(v&&visible(main,u.ans)&&visible(q,u.ans)) out.push({appliance:app.name,brand:brandOf(u)||null,issue:v.slice(0,300)}); }); });
+  return out;
+}
 function textProblem(q,v){
   v=String(v||"").trim();
   if(!v) return q.req?"empty":"";
@@ -1202,6 +1221,7 @@ async function saveToHcp(kind){
     save();
     let woNote="";
     try{ const ins=await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}).select("id").single();
+      try{ const oi=otherIssues(); if(oi.length) await SB.from("intake_other_issues").insert(oi.map(o=>Object.assign({taken_by:S.csr||null,intake_id:ins.data?ins.data.id:null},o))); }catch(e){}
       if(S.wo&&ins.data){
         if(kind==="job"){ const u=await SB.from("work_orders").update({status:"booked",intake_id:ins.data.id,hcp_job_number:number?String(number):null}).eq("id",S.wo.id).is("intake_id",null).select("id");
           woNote=(!u.error&&u.data&&u.data.length)?("Work order "+S.wo.ref+" is now marked booked."):("Work order "+S.wo.ref+" could not be marked booked automatically. Open it in Work orders and pick this intake from the list."); }

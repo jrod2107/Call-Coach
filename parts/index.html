@@ -180,6 +180,27 @@ function triageDue(p){
   const d=-daysUntil(p.ordered_on||String(p.created_at).slice(0,10));
   return d>=TRIAGE_DAYS?`${d} days since ordered. Install, return or keep as stock.`:'';
 }
+/* A job can have several parts, each its own line with its own vendor and status. The job rule says whether the
+   visit waits for every part ('all') or can go out with whichever part is in ('any'). It is kept the same on every part of the job. */
+const JOB_OPEN=['need_to_order','ordered','backordered','shipped','received'];
+const RULES=[['','Not decided'],['all','Book only when all parts are in'],['any','OK to go out with one part']];
+const jobParts=jn=>{const k=String(jn||'').trim();return k?S.parts.filter(x=>String(x.job_number).trim()===k&&JOB_OPEN.includes(x.status)):[]};
+const jobRule=jn=>(jobParts(jn).find(x=>x.job_rule)||{}).job_rule||'';
+function jobLine(p){
+  if(!JOB_OPEN.includes(p.status))return '';
+  const all=jobParts(p.job_number);if(all.length<2)return '';
+  const inn=all.filter(x=>x.status==='received').length,rule=jobRule(p.job_number);
+  const st=rule==='all'?(inn===all.length?pill('All parts in, ready to book','good'):pill('Wait for all parts','warn'))
+    :rule==='any'?(inn?pill('OK to book with what is in','good'):pill('OK to go with one part',''))
+    :pill('Decide: wait for all, or go with one','warn');
+  return `<br><span class="muted">${all.length} parts on this job, ${inn} in</span> ${st}`;
+}
+async function setJobRule(jn,rule){
+  const ids=jobParts(jn).map(x=>x.id);if(!ids.length)return true;
+  const {error}=await SB.from('parts').update({job_rule:rule||null}).in('id',ids);
+  if(error){toast(error.message,true);return false}
+  return true;
+}
 function flags(p){
   const f=[];
   if(p.triage){f.push(pill('Triage','info'));const due=triageDue(p);if(due)f.push(pill(due,'bad'))}
@@ -220,7 +241,7 @@ function vMain(){
     ${rows.map(p=>`<tr data-a="open" data-id="${p.id}">
       <td class="mono">${esc(p.tag)}</td>
       <td><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''}<br><span class="muted">${esc(p.description)}</span></td>
-      <td>#${esc(p.job_number)}<br><span class="muted">${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}</span></td>
+      <td>#${esc(p.job_number)}<br><span class="muted">${esc(p.customer_name)}${p.appliance?' · '+esc(p.appliance):''}</span>${jobLine(p)}</td>
       <td>${p.vendors?esc(vname(p)):'<span class="muted">Not ordered</span>'}${p.status==='need_to_order'&&sugText(p)?`<br>${pill('Suggested','info')} ${esc(sugText(p))}`:''}${p.po_number?`<br><span class="mono muted">PO ${esc(p.po_number)}</span>`:''}${p.vendor_order_no?`<br><span class="mono muted">Order ${esc(p.vendor_order_no)}</span>`:''}${p.tracking_number?`<br><span class="mono muted">${esc(p.tracking_number)}</span>`:''}</td>
       <td>${pill(LABEL[p.status],TONE[p.status])} ${flags(p)}${p.eta&&['ordered','shipped'].includes(p.status)?`<br><span class="muted">ETA ${fmtDate(p.eta)}</span>`:''}${p.status==='received'&&locName(p.location_id)?`<br><span class="muted">At ${esc(locName(p.location_id))}${p.bin?' · '+esc(p.bin):''}</span>`:''}${p.requested_by_name?`<br><span class="muted">Requested by ${esc(p.requested_by_name)}</span>`:''}</td>
       <td class="act">${rowActions(p)}</td></tr>`).join('')}</tbody></table></div>`
@@ -242,6 +263,12 @@ function dPart(p){
     ${f('Shelf or bin','bin')}
     <label class="row fld wide" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="pf-triage" ${p.triage?'checked':''} ${ro} style="width:auto"><span>Triage part: an extra ordered in case it is needed. Return it if it is not used.</span></label>
     <label class="fld wide"><span>Notes</span><textarea id="pf-notes">${esc(p.notes)}</textarea></label></div>
+   ${JOB_OPEN.includes(p.status)?(()=>{const sib=jobParts(p.job_number).filter(x=>x.id!==p.id),rule=jobRule(p.job_number);
+     return `<div><h3>Parts on job #${esc(p.job_number)}</h3>
+      ${sib.length?`<ul class="hist">${sib.map(x=>`<li><button class="ghost small mono" data-a="opensib" data-id="${x.id}">${esc(x.tag)}</button> · <span class="mono">${esc(x.part_number)}</span> ${esc(x.description)} ${pill(LABEL[x.status],TONE[x.status])}${x.vendors?' · '+esc(vname(x)):''}</li>`).join('')}</ul>
+       <label class="fld" style="margin-top:8px"><span>Booking the visit</span><select id="pf-job_rule" data-jobrule="${esc(p.job_number)}">${RULES.map(([k,l])=>`<option value="${k}" ${rule===k?'selected':''}>${l}</option>`).join('')}</select></label>`
+       :'<p class="muted" style="margin:4px 0">This is the only part on this job.</p>'}
+      <button class="small" data-a="addpart" data-id="${p.id}" style="margin-top:8px">+ Add another part for this job</button></div>`})():''}
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
   </div>
   <div class="dfoot">${o&&!['cancelled','credited','installed','stocked'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
@@ -260,6 +287,9 @@ function dRequest(){
     ${o&&r.ordered?'':`<label class="fld"><span>Suggested vendor, if you checked</span><select id="rq-sug_vendor" data-req="sug_vendor"><option value="">No suggestion</option>${S.vendors.filter(v=>v.active&&!isOther(v)).map(v=>`<option value="${v.id}" ${r.sug_vendor===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select></label>
     ${f('Branch, or where you saw it in stock','sug_note','wide','placeholder="e.g. 2 on the shelf at the San Marcos counter, can pick up today"')}`}
     <label class="fld wide"><span>Notes for the office</span><textarea id="rq-notes" data-req="notes" placeholder="e.g. what the customer was told: return visit to install on Thursday">${esc(r.notes)}</textarea></label></div>
+   ${(()=>{const sib=jobParts(r.job_number);if(!sib.length)return '';
+     return `<div class="notice" style="margin:0"><b>Job #${esc(r.job_number.trim())} already has ${sib.length} part${sib.length===1?'':'s'} here:</b> ${sib.map(x=>`${esc(x.tag)} ${esc(x.part_number)} (${esc(LABEL[x.status])})`).join(', ')}. This one is added as its own line, so each part can have its own vendor and status.
+      <label class="fld" style="margin-top:8px"><span>Booking the visit</span><select id="rq-job_rule" data-req="job_rule">${RULES.map(([k,l])=>`<option value="${k}" ${(r.job_rule!=null?r.job_rule:jobRule(r.job_number))===k?'selected':''}>${l}</option>`).join('')}</select></label></div>`})()}
    <label class="row"><input type="checkbox" id="rq-triage" data-reqtriage="1" ${r.triage?'checked':''} style="width:auto"><span>Triage part: an extra in case it is needed. It gets flagged to return if it is not used.</span></label>
    ${r.stock&&r.stock.n?`<div class="notice" style="margin:0"><b>${r.stock.n} of ${esc(r.stock.pn)} already in stock</b> (${esc(r.stock.where)}). <a href="../stock/" style="color:inherit">Open Stock</a> to hold one for this job instead of ordering.</div>`:''}
    ${o?`<label class="row"><input type="checkbox" id="rq-ordered" data-reqcheck="1" ${r.ordered?'checked':''} style="width:auto"><span>This part has already been ordered</span></label>
@@ -315,9 +345,11 @@ const A={
   refresh:()=>load(),
   signout:async()=>{await SB.auth.signOut();location.reload()},
   open:d=>openPart(d.id),
+  opensib:d=>openPart(d.id),
   close:()=>closeDlg(),
   request:()=>{S.req={hq:'',job_number:'',hcp_job_id:null,customer_name:'',appliance:'',part_number:'',description:'',qty:1,notes:'',sug_vendor:'',sug_note:'',custs:null,jobs:null,custName:'',busy:false,msg:'',ordered:false,vendor:'',other:'',order:'',tracking:'',eta:''};S.dlg={type:'request'};renderDlg()},
   vendors:()=>{S.dlg={type:'vendors'};renderDlg()},
+  addpart:d=>{const p=part(d.id);A.request();Object.assign(S.req,{job_number:String(p.job_number||''),hcp_job_id:p.hcp_job_id||null,customer_name:p.customer_name||'',appliance:p.appliance||''});renderDlg();const el=$('rq-part_number');if(el)el.focus()},
   order:async d=>{const p=part(d.id),pk=pickOf(p),v=S.vendors.find(x=>x.id===pk.vendor);if(!v){toast('Pick the vendor first.',true);return}
     const other=isOther(v)?(pk.other||'').trim():null;if(isOther(v)&&!other){toast('Type the vendor name for Other.',true);return}
     const name=other||v.name,po=/amazon/i.test(name)?null:`${p.job_number}-${lastName(p.customer_name)}`.replace(/-$/,''),ono=(pk.order||'').trim()||null;
@@ -357,8 +389,11 @@ const A={
       Object.assign(row,{status:trk?'shipped':'ordered',vendor_id:v.id,vendor_other:other,vendor_order_no:r.order.trim()||null,tracking_number:trk,eta:r.eta||null,ordered_on:today(),
         po_number:/amazon/i.test(name)?null:`${row.job_number}-${lastName(row.customer_name)}`.replace(/-$/,'')});
       tab=trk?'shipped':'ordered';msg=`Part added as already ordered from ${name}. It is under ${trk?'Shipped':'On order'}.`}
+    const sib=jobParts(row.job_number),rule=r.job_rule!=null?r.job_rule:jobRule(row.job_number);
+    if(sib.length)row.job_rule=rule||null;
     const {error}=await SB.from('parts').insert(row);
     if(error){toast(error.message,true);return}
+    if(sib.length){await setJobRule(row.job_number,rule);msg+=` Job #${row.job_number} now has ${sib.length+1} parts.`+(rule?'':' Choose whether the visit waits for all of them.')}
     closeDlg();S.tab=tab;toast(msg);load()},
   tostock:d=>{S.dlg={type:'tostock',id:d.id};renderDlg()},
   /* One database call does the whole move (stock rows created, this part marked) or none of it. */
@@ -380,6 +415,9 @@ document.addEventListener('change',async e=>{const el=e.target;
   if(el.dataset.pick==='vendor'){(S.pick[el.dataset.id]=S.pick[el.dataset.id]||Object.assign({},pickOf(part(el.dataset.id)))).vendor=el.value;render();return}
   if(el.dataset.reqcheck&&S.req){S.req.ordered=el.checked;renderDlg();return}
   if(el.dataset.reqtriage&&S.req){S.req.triage=el.checked;return}
+  if(el.dataset.req==='job_rule'&&S.req){S.req.job_rule=el.value;return}
+  if(el.dataset.req==='job_number'&&S.req){if(jobParts(el.value).length||$('rq-job_rule'))renderDlg();return}
+  if(el.dataset.jobrule){const jn=el.dataset.jobrule;if(await setJobRule(jn,el.value)){toast(el.value==='all'?`Job #${jn}: book only when all parts are in.`:el.value==='any'?`Job #${jn}: OK to go out with one part.`:`Job #${jn}: not decided.`);await load()}return}
   if(el.dataset.req==='vendor'&&S.req){S.req.vendor=el.value;renderDlg();return}
   /* Stock check: before a part goes to ordering, see whether one is already on a shelf or truck. */
   if(el.dataset.req==='part_number'&&S.req){const r=S.req,pn=el.value.trim().toUpperCase();r.stock=null;if(!pn)return;

@@ -101,7 +101,8 @@ async function load(){
   S.loading=false;
   const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
   S.parts=res[0].data||[];
-  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[]}
+  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];
+    const o=await SB.from('intake_other_issues').select('appliance,brand,issue,taken_by,created_at').gte('created_at',new Date(Date.now()-90*864e5).toISOString()).order('created_at',{ascending:false}).limit(500);S.others=o.data||[]}
   S.intakes=office()&&res[1]?res[1].data||[]:[];
   S.team=S.me.role==='admin'&&res[2]?res[2].data||[]:[];
   render();
@@ -133,6 +134,17 @@ function vAttention(){
     ${stat(n(p=>mine(p)&&p.status==='need_to_order'),'Your requests waiting to be ordered','warn','../parts/')}
     ${stat(n(p=>mine(p)&&['ordered','backordered','shipped'].includes(p.status)),'Your requests on the way','','../parts/')}</div>`;
 }
+/* Issues the office typed in under "Other" on Call intake, grouped by appliance. Three or more for one appliance
+   in 90 days is flagged, as a sign the issue list for that appliance is missing something. */
+function vOthers(){
+  if(!office()||!(S.others||[]).length)return'';
+  const by={};S.others.forEach(o=>{(by[o.appliance]=by[o.appliance]||[]).push(o)});
+  const rows=Object.entries(by).sort((a,b)=>b[1].length-a[1].length);
+  return `<h3>Issues typed in under "Other" on Call intake, last 90 days</h3><div class="panel"><table><thead><tr><th>Appliance</th><th>Times</th><th>What was typed</th></tr></thead><tbody>
+   ${rows.map(([app,list])=>`<tr><td>${esc(app)}</td><td><b>${list.length}</b>${list.length>=3?' <span class="muted">· add to the list?</span>':''}</td>
+     <td>${list.slice(0,8).map(o=>`${esc(o.issue)} <span class="muted">(${esc([o.brand,o.taken_by,String(o.created_at).slice(5,10)].filter(Boolean).join(', '))})</span>`).join('<br>')}${list.length>8?`<br><span class="muted">and ${list.length-8} more</span>`:''}</td></tr>`).join('')}</tbody></table></div>
+   <p class="muted" style="margin-top:8px">When the same issue keeps coming up for an appliance, ask for it to be added to that appliance's list for good.</p>`;
+}
 function vTeam(){
   if(S.me.role!=='admin')return'';
   return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>
@@ -149,6 +161,7 @@ function vHome(){
   <div class="wrap"><h2>${first?'Hi, '+esc(first):'Home'}</h2><p class="muted">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
    ${S.err?`<div class="notice">Some numbers could not be loaded: ${esc(S.err)}</div>`:''}
    ${vAttention()}
+   ${vOthers()}
    ${vTeam()}</div>`;
 }
 function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
