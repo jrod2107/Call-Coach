@@ -4,23 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="../manifest.webmanifest">
-<meta name="theme-color" content="#1e40af">
+<meta name="theme-color" content="#161b22">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
 <link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
 <title>City Appliance — Work Orders</title>
 <style>
-:root{
-  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
-  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
-  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
-}
-@media (prefers-color-scheme: dark){ :root{
-  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
-  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
-  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
-  color-scheme:dark } }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 h1,h2,h3{margin:0;font-weight:700}
@@ -100,8 +89,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 td a{color:var(--accent-text)}
 details>summary{color:var(--muted)}
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
 </head>
 <body>
+<script src="../shell.js" data-base="../" data-page="workorders" data-bar="1"></script>
 <div id="app"></div>
 <dialog id="dlg"></dialog>
 <div id="toast" role="status" hidden></div>
@@ -228,12 +221,11 @@ function vMain(){
   const q=S.q.trim().toLowerCase();
   const match=w=>!q||[w.ref,w.source_name,w.source_ref,w.contact_name,w.contact_phone,w.contact_phone2,addr(w),w.appliance,w.issue,w.hcp_job_number,w.invoice_number].join(' ').toLowerCase().includes(q);
   const cur=TABS.find(t=>t[0]===S.tab),rows=S.rows.filter(w=>cur[2](w)&&match(w));
-  return `<header class="top"><a href="../home/" aria-label="Back to Home">← Home</a><h1>Work Orders</h1>
+  return `<header class="top"><h1>Work Orders</h1>
    <input id="q" type="search" placeholder="Search name, phone, address, company or number" value="${esc(S.q)}" aria-label="Search work orders">
    <span class="grow"></span>
    <button class="primary" data-a="new">+ New work order</button>
-   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load work orders: ${esc(S.err)}</div>`:''}
    <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['review','tobook','approval','portal','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
@@ -520,6 +512,7 @@ $('dlg').addEventListener('close',()=>{S.dlg=null;S.edit=null});
 window.addEventListener('focus',()=>{if(S.session&&office()&&!S.loading&&!(S.dlg&&!S.dlg.id))load()});
 
 function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);   /* the shared menu shows what this role can open */
   $('app').innerHTML=!SB?'<div class="card"><h2>Work Orders</h2><p>This page is missing its configuration (config.js).</p></div>'
     :!S.session?vLogin():!office()?vWaiting():vMain();
 }

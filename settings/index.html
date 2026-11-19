@@ -4,23 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="../manifest.webmanifest">
-<meta name="theme-color" content="#1e40af">
+<meta name="theme-color" content="#161b22">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
 <link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
 <title>City Appliance — Settings</title>
 <style>
-:root{
-  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
-  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af;
-  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de;
-  --r:6px;
-}
-@media (prefers-color-scheme: dark){ :root{
-  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
-  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff;
-  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17;
-  color-scheme:dark } }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 h1,h2,h3{margin:0;font-weight:700}
@@ -29,9 +18,6 @@ h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute
 .muted{color:var(--muted)} .grow{flex:1}
 .top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .top .who{font-size:12px;opacity:.9}
-.tools{display:flex;flex-wrap:wrap;gap:4px}
-.tools a{color:#fff;text-decoration:none;font-weight:600;padding:6px 11px;border-radius:var(--r);background:rgba(255,255,255,.14)}
-.tools a:hover{background:rgba(255,255,255,.28)}
 .wrap{max-width:1080px;margin:0 auto;padding:22px 16px 60px}
 button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -66,8 +52,12 @@ textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px soli
 td.narrow{width:1%;white-space:nowrap} td input{min-width:140px}
 button:disabled{opacity:.45;cursor:not-allowed}
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
 </head>
 <body>
+<script src="../shell.js" data-base="../" data-page="settings" data-bar="1"></script>
 <div id="app"></div>
 <div id="toast" role="status" hidden></div>
 
@@ -218,9 +208,8 @@ function vIntakeLists(){
 
 function vSettings(){
   const company=admin()||mgr()||office();
-  return `<header class="top"><h1>Settings</h1><nav class="tools" aria-label="Pages"><a href="../home/">← Home</a></nav><span class="grow"></span>
-    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[roleKey(S.me)]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
+  return `<header class="top"><h1>Settings</h1><span class="grow"></span>
+    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice">Some settings could not be loaded: ${esc(S.err)}</div>`:''}
    ${vAccount()}
@@ -237,6 +226,7 @@ function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given a role yet. Ask Jake to set it.</p>
   <button data-a="signout">Sign out</button></div>`}
 function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);   /* the shared menu shows what this role can open */
   $('app').innerHTML=!SB?'<div class="card"><h2>Settings</h2><p>This page is missing its configuration (config.js).</p></div>'
     :!S.session?vLogin():!allowed()?vWaiting():vSettings();
 }

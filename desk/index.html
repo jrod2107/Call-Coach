@@ -397,6 +397,7 @@ main{max-width:1120px;margin-inline:auto;padding-top:18px}
 .acct{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink2);padding-bottom:8px}
 .acct a,.acct button{color:var(--accent);background:none;border:0;padding:0;font:inherit;text-decoration:underline;cursor:pointer}
 </style>
+<script src="../shell.js" data-base="../" data-page="desk"></script>
 <div id="login"><form id="loginForm">
   <h1>Call <span>Desk</span></h1>
   <div style="font-size:14px;color:var(--ink2)">Sign in with your Call Coach email and password.</div>
@@ -424,6 +425,9 @@ main{max-width:1120px;margin-inline:auto;padding-top:18px}
       form.innerHTML='<h1>Call <span>Desk</span></h1><div style="font-size:14px;color:var(--ink2)">This account does not have access to the Call Desk. Ask Jake to set your role.</div><button type="button" id="gateOut">Sign out</button>';
       document.getElementById('gateOut').addEventListener('click',async()=>{await sb.auth.signOut();location.reload()});return}
     window.__deskSB=sb;
+    /* The shared menu (shell.js) shows the pages this person's role can use. */
+    if(window.AppShell)try{const {data:{session}}=await sb.auth.getSession();
+      const p=await sb.from('profiles').select('display_name,email,role,manager,senior').eq('id',session.user.id).maybeSingle();if(p.data)AppShell.set(p.data)}catch(e){}
     const t=document.createElement('template');t.innerHTML=data.html;
     gate.remove();
     const scripts=Array.from(t.content.querySelectorAll('script'));
@@ -436,7 +440,7 @@ main{max-width:1120px;margin-inline:auto;padding-top:18px}
     if(error){say(error.message==='Invalid login credentials'?'Wrong email or password.':error.message);return}
     open()});
   const {data:{session}}=await sb.auth.getSession();
-  if(session)open();else document.getElementById('lgEmail').focus();
+  if(session)open();else{if(window.AppShell)AppShell.set(null);document.getElementById('lgEmail').focus()}
 })();
 </script>
 

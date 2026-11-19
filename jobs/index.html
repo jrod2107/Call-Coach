@@ -4,23 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="../manifest.webmanifest">
-<meta name="theme-color" content="#1e40af">
+<meta name="theme-color" content="#161b22">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
 <link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
 <title>City Appliance — Jobs</title>
 <style>
-:root{
-  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
-  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
-  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
-}
-@media (prefers-color-scheme: dark){ :root{
-  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
-  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
-  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
-  color-scheme:dark } }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 h1,h2,h3{margin:0;font-weight:700}
@@ -99,8 +88,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .qr{background:#fff;padding:8px;border-radius:var(--r);width:200px;height:200px;align-self:center}
 .code{font-family:var(--mono);font-size:20px;letter-spacing:.2em;text-align:center}
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
 </head>
 <body>
+<script src="../shell.js" data-base="../" data-page="jobs" data-bar="1"></script>
 <div id="app"></div>
 <dialog id="dlg"></dialog>
 <div id="toast" role="status" hidden></div>
@@ -153,6 +146,7 @@ async function checkAal(){
   S.aal=data?data.currentLevel:null;S.next=data?data.nextLevel:null;
 }
 async function load(){
+  if(fromHash())find();
   S.loading=true;render();
   const from=new Date(Date.now()-14*864e5).toISOString(),to=new Date(Date.now()+46*864e5).toISOString();
   const [a,b]=await Promise.all([
@@ -284,11 +278,10 @@ function vMain(){
   const uns=S.jobs.filter(j=>!j.scheduled_start&&!closed(j));
   const last=S.jobs.reduce((m,j)=>j.synced_at>m?j.synced_at:m,'');
   const open=dayJobs.filter(j=>!closed(j)).length;
-  return `<header class="top"><a href="../home/" style="color:inherit;text-decoration:none;opacity:.9" aria-label="Back to Home">← Home</a><h1>Jobs</h1>
+  return `<header class="top"><h1>Jobs</h1>
    <span class="grow"></span>
    ${S.me.role==='admin'?`<button data-a="sync">${S.busy==='sync'?'Syncing…':'Sync now'}</button><button data-a="log">Who viewed</button>`:''}
-   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(roleLabel())}</span><button data-a="signout">Sign out</button></header>
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad">Could not load jobs: ${esc(S.err)}</div>`:''}
    ${!seesAll()?`<div class="notice" style="margin-top:0">${S.me.hcp_employee_id?'You see the jobs assigned to you, from two days back to five days ahead.':'Your account is not linked to your Housecall Pro login yet, so no jobs show. Ask Jake to check that both use the same email.'}</div>`:''}
@@ -388,6 +381,7 @@ document.addEventListener('submit',async e=>{e.preventDefault();
 $('dlg').addEventListener('close',()=>{S.dlg=null;S.det=null});
 
 function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);   /* the shared menu shows what this role can open */
   $('app').innerHTML=!SB?'<div class="card"><h2>Jobs</h2><p>This page is missing its configuration (config.js).</p></div>'
     :!S.session?vLogin():!allowed()?vWaiting():S.aal!=='aal2'?(S.next==='aal2'?vVerify():vEnroll()):vMain();
   const c=$('mfaCode');if(c&&S.aal!=='aal2'&&!c.value)c.focus();
@@ -398,6 +392,11 @@ async function start(){
   render();
   if(allowed()&&S.aal==='aal2')load();
 }
+/* The search box in the shared top bar sends people here as #find=words. The words stay in the browser. */
+function fromHash(){const m=/^#find=(.+)/.exec(location.hash);if(!m)return false;
+  try{S.q=decodeURIComponent(m[1]).slice(0,80)}catch(e){return false}
+  S.tab='find';history.replaceState(null,'',location.pathname);return true}
+window.addEventListener('hashchange',()=>{if(fromHash()&&S.me&&S.aal==='aal2')find()});
 (async function boot(){
   if(!SB){render();return}
   const {data:{session}}=await SB.auth.getSession();S.session=session;

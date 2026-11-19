@@ -58,10 +58,15 @@
       else{n.textContent=s.textContent;s.replaceWith(n)}
     }
   }
+  /* The shared menu (shell.js) shows the pages this person's role can use. */
+  async function menu(){if(!window.AppShell)return;
+    try{const {data:{session}}=await sb.auth.getSession();if(!session){AppShell.set(null);return}
+      const {data}=await sb.from('profiles').select('display_name,email,role,manager,senior').eq('id',session.user.id).maybeSingle();
+      if(data)AppShell.set(data)}catch(e){}}
   let opening=false;
   async function open(){
     if(opening)return;opening=true;   /* a password sign-in also raises SIGNED_IN; open once */
-    lock(true);say('Opening…');
+    lock(true);say('Opening…');menu();
     let res;try{res=await sb.from('protected_pages').select('html,sha256').eq('slug',slug).maybeSingle()}catch(e){res={error:e}}
     if(res.error){
       /* Could not reach the database. A device that has opened this page before, and is still signed in, keeps working. */
@@ -90,6 +95,7 @@
   (async()=>{
     let session=null;try{session=(await sb.auth.getSession()).data.session}catch(e){}
     if(session){open();return}
+    if(window.AppShell)AppShell.set(null);
     /* A sign-in link lands here a moment before the library has finished reading it. */
     sb.auth.onAuthStateChange((ev,s)=>{if(s&&ev==='SIGNED_IN'&&document.body.contains(gate))open()});
     $('gate-email').focus();
