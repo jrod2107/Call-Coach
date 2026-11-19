@@ -133,6 +133,7 @@ const TABS=[
   ['tobook','To book',w=>['new','contacting'].includes(w.status)],
   ['booked','Booked',w=>w.status==='booked'&&!w.invoice_sent_on],
   ['approval','Waiting on approval',w=>OPEN.includes(w.status)&&['needed','requested'].includes(w.approval)],
+  ['portal','Portal to update',w=>!!w.portal_note&&!w.portal_updated&&['booked','done'].includes(w.status)],
   ['unpaid','Invoiced, not paid',w=>w.status!=='cancelled'&&w.invoice_sent_on&&!w.paid_on],
   ['paid','Paid',w=>!!w.paid_on],
   ['closed','Cancelled',w=>w.status==='cancelled']];
@@ -224,8 +225,8 @@ function vMain(){
    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load work orders: ${esc(S.err)}</div>`:''}
-   <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['review','tobook','approval','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
-   ${S.tab==='review'?reviewBar():''}
+   <div class="tabs">${TABS.map(([k,l,f])=>{const n=S.rows.filter(f).length;return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['review','tobook','approval','portal','unpaid'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   ${S.tab==='review'?reviewBar():''}${S.tab==='portal'?'<div class="row" style="margin:0 0 10px"><span class="muted">These jobs are booked or done, and the company\'s portal has not been updated yet. Update it there (schedule, status, invoice), then open the work order and tick "Their portal has been updated".</span></div>':''}
    <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Number</th><th>Sent by</th><th>Who to contact</th><th>Appliance and problem</th><th>Where it stands</th></tr></thead><tbody>
     ${rows.map(w=>{const lc=S.last[w.id],d=daysSince(w.received_on);return `<tr data-a="open" data-id="${w.id}">
       <td class="mono">${esc(w.ref)}</td>
@@ -233,7 +234,7 @@ function vMain(){
       <td>${esc(w.contact_name||'No name')}${w.contact_phone?`<br><a href="tel:${esc(digits(w.contact_phone))}">${esc(w.contact_phone)}</a>`:''}${addr(w)?`<br><span class="muted">${esc(addr(w))}</span>`:''}</td>
       <td>${esc(w.appliance||'')}${w.issue?`<br><span class="muted">${esc(String(w.issue).slice(0,110))}${String(w.issue).length>110?'…':''}</span>`:''}</td>
       <td>${stageCell(w)}${['draft','new','contacting'].includes(w.status)?`<br><span class="muted">Received ${d===0?'today':d+' day'+(d===1?'':'s')+' ago'}${lc?' · last: '+esc((EV[lc.kind]||'Note').toLowerCase())+' '+fmtWhen(lc.at):''}</span>`:''}</td></tr>`}).join('')}</tbody></table></div>`
-     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':S.tab==='review'?'Nothing waiting for review.':S.tab==='tobook'?'No work orders waiting to be booked.':'Nothing in this list.'}</div>`}</div>
+     :`<div class="empty">${S.loading?'Loading…':q?'Nothing here matches your search.':S.tab==='review'?'Nothing waiting for review.':S.tab==='portal'?'No portals waiting for an update.':S.tab==='tobook'?'No work orders waiting to be booked.':'Nothing in this list.'}</div>`}</div>
   </div>`}
 
 /* ---------- dialog ---------- */
