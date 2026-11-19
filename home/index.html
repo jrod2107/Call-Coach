@@ -83,7 +83,8 @@ const TOOLS=[
   {href:'../stock/',name:'Stock',desc:'Scan parts in, hold them for jobs, restock and eBay lists.',roles:['admin','csr','tech','stock']},
   {href:'../workorders/',name:'Work orders',desc:'Warranty and property-manager jobs: contact, book through intake, track approval and payment.',roles:['admin','csr']},
   {href:'../intake/',name:'Call intake',desc:'Take a call and book it into Housecall Pro.',roles:['admin','csr']},
-  {href:'../desk/#tag',name:'Model number finder',desc:'Where to find the model and serial tag on each appliance.',roles:['admin','csr']}
+  {href:'../desk/#tag',name:'Model number finder',desc:'Where to find the model and serial tag on each appliance.',roles:['admin','csr']},
+  {href:'../pricing/',name:'Job pricing',desc:'Work out the price of a repair: service charge, labor, parts, tax and deposit.',roles:['admin','csr','tech']}
 ];
 const S={session:null,me:null,parts:[],wos:[],intakes:[],team:[],loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
