@@ -18,13 +18,11 @@
   /* Order is the same on every page. `group` starts a new labelled section. */
   const NAV=[
     {k:'home',label:'Home',href:'home/',roles:['admin','csr','tech','stock'],icon:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>'},
+    {k:'intake',label:'Call intake',href:'intake/',roles:['admin','csr'],icon:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/>'},
     {k:'jobs',label:'Jobs',href:'jobs/',roles:['admin','csr','tech'],icon:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'},
     {k:'workorders',label:'Work orders',href:'workorders/',roles:['admin','csr'],icon:'<path d="M7 3h10v18H7z"/><path d="M10 8h4M10 12h4M10 16h2"/>'},
     {k:'parts',label:'Parts desk',href:'parts/',roles:['admin','csr','tech'],group:'Parts',icon:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'},
-    {k:'stock',label:'Stock',href:'stock/',roles:['admin','csr','tech','stock'],icon:'<path d="M4 4v16M20 4v16M4 10h16M4 16h16"/><rect x="7" y="6" width="4" height="4"/><rect x="13" y="12" width="4" height="4"/>'},
-    {k:'intake',label:'Call intake',href:'intake/',roles:['admin','csr'],group:'Calls',icon:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/>'},
-    {k:'desk',label:'Call Desk',href:'desk/',roles:['admin','csr'],icon:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'},
-    {k:'coach',label:'Call Coach',href:'',roles:['admin','csr'],icon:'<path d="M4 13a8 8 0 0 1 16 0"/><rect x="3" y="13" width="4" height="6" rx="1"/><rect x="17" y="13" width="4" height="6" rx="1"/><path d="M19 19a4 4 0 0 1-4 3h-2"/>'}
+    {k:'stock',label:'Stock',href:'stock/',roles:['admin','csr','tech','stock'],icon:'<path d="M4 4v16M20 4v16M4 10h16M4 16h16"/><rect x="7" y="6" width="4" height="4"/><rect x="13" y="12" width="4" height="4"/>'}
   ];
   const SETTINGS={k:'settings',label:'Settings',href:'settings/',roles:['admin','csr','tech','stock'],icon:'<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'};
   const MORE='<path d="M4 7h16M4 12h16M4 17h16"/>';
