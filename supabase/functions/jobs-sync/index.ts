@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
   try { body = (await req.json()) as Row; } catch { /* empty body is fine */ }
   const day = 864e5, now = Date.now();
   const isDate = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
-  const ranged = !scheduled && isDate(body.from) && isDate(body.to);
+  const ranged = isDate(body.from) && isDate(body.to);
   const from = ranged ? new Date(body.from + "T00:00:00Z") : new Date(now - 7 * day);
   const to = ranged ? new Date(body.to + "T23:59:59Z") : new Date(now + 45 * day);
 

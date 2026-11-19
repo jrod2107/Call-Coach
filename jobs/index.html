@@ -133,8 +133,8 @@ const phone=p=>{const d=String(p||'').replace(/\D/g,'');return d.length===10?`($
 const STATUS={'needs scheduling':['Needs scheduling','warn'],scheduled:['Scheduled','info'],'in progress':['In progress','good'],'complete unrated':['Complete','good'],'complete rated':['Complete','good'],'user canceled':['Cancelled','bad'],'pro canceled':['Cancelled','bad']};
 const stat=j=>{const s=STATUS[j.work_status]||[j.work_status||'Unknown',''];return pill(s[0],s[1])};
 const closed=j=>/complete|cancel/.test(j.work_status||'');
-const TABS=[['day','Day'],['unscheduled','Not scheduled'],['find','Find a job']];
-const S={session:null,me:null,aal:null,next:null,mfa:null,jobs:[],found:null,tab:'day',day:today(),q:'',loading:false,err:'',dlg:null,det:null,log:null,busy:''};
+const TABS=[['day','Day'],['unscheduled','Not scheduled'],['cleanup','To clean up'],['find','Find a job']];
+const S={session:null,me:null,aal:null,next:null,mfa:null,jobs:[],stale:[],cleanF:'owed',partsBy:{},found:null,tab:'day',day:today(),q:'',loading:false,err:'',dlg:null,det:null,log:null,busy:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const seesAll=()=>office()||(S.me&&S.me.role==='tech'&&S.me.senior);
@@ -161,6 +161,40 @@ async function load(){
   S.loading=false;
   if(a.error||b.error)S.err=(a.error||b.error).message;else{S.err='';S.jobs=(a.data||[]).concat(b.data||[])}
   render();
+  loadExtras();
+}
+/* Loaded after the schedule so the page shows fast: jobs left open in Housecall Pro after their visit date
+   (the clean-up list), and the open parts for each job so the schedule can show whether a job is waiting on parts. */
+const PART_OPEN=['need_to_order','ordered','backordered','shipped','received'];
+/* The clean-up list starts here. Older jobs are in the copy and searchable, but are left for a later pass.
+   Housecall Pro changes to jobs from the last 60 days come over hourly; older ones need a re-import. */
+const CLEAN_FROM='2026-11-01';
+async function loadExtras(){
+  const past=new Date(Date.now()-36*36e5).toISOString(),old=new Date(Date.now()-30*864e5).toISOString();
+  const [st,un,pt]=await Promise.all([
+    seesAll()?SB.from('jobs').select('*').is('deleted_at',null).in('work_status',['scheduled','in progress']).gte('scheduled_start',CLEAN_FROM+'T06:00:00Z').lt('scheduled_start',past).order('scheduled_start',{ascending:false}).limit(1000):Promise.resolve({data:[]}),
+    seesAll()?SB.from('jobs').select('*').is('deleted_at',null).is('scheduled_start',null).eq('work_status','needs scheduling').gte('hcp_created_at',CLEAN_FROM+'T06:00:00Z').lt('hcp_created_at',old).order('hcp_created_at').limit(300):Promise.resolve({data:[]}),
+    SB.from('parts').select('job_number,status,job_rule').in('status',PART_OPEN).limit(1000)]);
+  S.stale=(st.data||[]).concat(un.data||[]);
+  const by={};(pt.data||[]).forEach(x=>{const k=String(x.job_number||'').trim();if(k)(by[k]=by[k]||[]).push(x)});S.partsBy=by;
+  render();
+}
+/* The clean-up list is split by money, since that decides what to do with each job. */
+const CLEAN=[['owed','Balance still owed'],['paid','Paid, never marked finished'],['none','No charges on the job']];
+const cleanKind=j=>!(j.total_cents>0)?'none':j.balance_cents>0?'owed':'paid';
+/* Why a job is on the clean-up list. */
+function staleWhy(j){
+  const days=d=>Math.max(1,Math.round((Date.now()-new Date(d))/864e5));
+  if(!j.scheduled_start)return `Never scheduled, created ${days(j.hcp_created_at)} days ago`;
+  return j.work_status==='in progress'?`Started ${days(j.scheduled_start)} days ago, never marked finished`:`Visit date passed ${days(j.scheduled_start)} days ago, still marked scheduled`;
+}
+/* Parts status for the schedule: how many of the job's open parts are in, and whether the visit should wait. */
+function partsPill(j){
+  const ps=S.partsBy[String(j.job_number||'').trim()];if(!ps||!ps.length||closed(j))return '';
+  const inn=ps.filter(x=>x.status==='received').length,rule=(ps.find(x=>x.job_rule)||{}).job_rule;
+  if(inn===ps.length)return pill(ps.length===1?'Part in':`All ${ps.length} parts in`,'good');
+  if(rule==='any'&&inn)return pill(`${inn} of ${ps.length} parts in, OK to go`,'good');
+  return pill(`Waiting on parts: ${inn} of ${ps.length} in`,'warn');
 }
 async function find(){
   const q=S.q.trim();if(q.length<2){S.found=null;render();return}
@@ -170,16 +204,17 @@ async function find(){
   S.busy='';if(error){toast(error.message,true);return}
   S.found=data||[];render();
 }
-const job=id=>S.jobs.find(j=>j.id===id)||(S.found||[]).find(j=>j.id===id);
+const job=id=>S.jobs.find(j=>j.id===id)||S.stale.find(j=>j.id===id)||(S.found||[]).find(j=>j.id===id);
 async function openJob(id){
   const j=job(id);if(!j)return;
   S.dlg={type:'job',id};S.det={loading:true};renderDlg();
   const calls=[SB.rpc('job_details',{p_job:id}),
     j.job_number?SB.from('parts').select('tag,part_number,description,status,qty').eq('job_number',j.job_number).limit(50):Promise.resolve({data:[]})];
   if(office()&&j.job_number)calls.push(SB.from('work_orders').select('*').eq('hcp_job_number',j.job_number).limit(5));
-  const [d,p,w]=await Promise.all(calls);
+  if(office())calls.push(SB.from('intakes').select('csr,outcome,created_at,fee_total,units').eq('hcp_job_id',j.hcp_job_id).order('created_at').limit(3));
+  const res=await Promise.all(calls),d=res[0],p=res[1],w=office()&&j.job_number?res[2]:null,it=office()?res[res.length-1]:null;
   if(!S.dlg||S.dlg.id!==id)return;
-  S.det={priv:d.error?null:(d.data||{}),err:d.error?d.error.message:'',parts:p.data||[],wos:(w&&w.data)||[]};renderDlg();
+  S.det={priv:d.error?null:(d.data||{}),err:d.error?d.error.message:'',parts:p.data||[],wos:(w&&w.data)||[],intakes:(it&&it.data)||[]};renderDlg();
 }
 
 /* ---------- sign-in and two-step ---------- */
@@ -242,7 +277,7 @@ function rowsHtml(rows,showDay){
       <td>${esc(j.customer_name||'')}<br><span class="muted">${esc([j.city,j.zip].filter(Boolean).join(' '))}</span></td>
       <td>${esc(String(j.description||'').slice(0,90))}${j.business_unit?`<br><span class="muted">${esc(j.business_unit)}</span>`:''}</td>
       <td>${esc((j.tech_names||[]).join(', '))||'<span class="muted">Unassigned</span>'}</td>
-      <td>${stat(j)}${j.balance_cents>0&&/complete/.test(j.work_status||'')?' '+pill('Balance '+money(j.balance_cents),'warn'):''}</td></tr>`).join('')}</tbody></table></div>`
+      <td>${stat(j)} ${partsPill(j)}${S.tab==='cleanup'?'<br><span class="muted">'+esc(staleWhy(j))+'</span>':''}${j.balance_cents>0&&(S.tab==='cleanup'||/complete/.test(j.work_status||''))?' '+pill('Balance '+money(j.balance_cents),'warn'):''}</td></tr>`).join('')}</tbody></table></div>`
     :`<div class="empty">${S.loading?'Loading…':'No jobs here.'}</div>`}
 function vMain(){
   const dayJobs=S.jobs.filter(j=>j.scheduled_start&&dayKey(j.scheduled_start)===S.day).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
@@ -258,11 +293,14 @@ function vMain(){
    ${S.err?`<div class="notice bad">Could not load jobs: ${esc(S.err)}</div>`:''}
    ${!seesAll()?`<div class="notice" style="margin-top:0">${S.me.hcp_employee_id?'You see the jobs assigned to you, from two days back to five days ahead.':'Your account is not linked to your Housecall Pro login yet, so no jobs show. Ask Jake to check that both use the same email.'}</div>`:''}
    <p class="muted" style="margin:0 0 6px">Copied from Housecall Pro${last?', last updated '+esc(fmtWhen(last)):''}. To change a job, use Housecall Pro for now.</p>
-   <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l}${k==='unscheduled'?` <span class="n${uns.length?' hot':''}">${uns.length}</span>`:''}</button>`).join('')}</div>
+   <div class="tabs">${TABS.map(([k,l])=>k==='cleanup'&&!seesAll()?'':`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l}${k==='unscheduled'?` <span class="n${uns.length?' hot':''}">${uns.length}</span>`:k==='cleanup'?` <span class="n${S.stale.length?' hot':''}">${S.stale.length}</span>`:''}</button>`).join('')}</div>
    ${S.tab==='day'?`<div class="daynav"><button data-a="day" data-n="-1" aria-label="Previous day">←</button><button data-a="day" data-n="0">Today</button><button data-a="day" data-n="1" aria-label="Next day">→</button>
       <input type="date" id="dayPick" value="${esc(S.day)}" aria-label="Pick a day"><b>${esc(fmtDay(S.day))}</b><span class="muted">${dayJobs.length} job${dayJobs.length===1?'':'s'}${dayJobs.length?', '+open+' still open':''}</span></div>
      <div class="panel">${rowsHtml(dayJobs,false)}</div>`
     :S.tab==='unscheduled'?`<div class="panel">${rowsHtml(uns,true)}</div>`
+    :S.tab==='cleanup'?`<p class="muted" style="margin:0 0 10px">Jobs since ${esc(fmtDay(CLEAN_FROM))} that are still open in Housecall Pro after their visit date, or never scheduled for over 30 days. Each one should be finished, rescheduled or cancelled in Housecall Pro so that reports and history are accurate. A job drops off this list within about an hour of being fixed there.</p>
+      <div class="row" style="margin-bottom:10px">${CLEAN.map(([k,l])=>{const n=S.stale.filter(j=>cleanKind(j)===k);return `<button class="small${S.cleanF===k?' primary':''}" data-a="cleanf" data-k="${k}">${l} · ${n.length}${k==='owed'&&n.length?' · '+money(n.reduce((t,j)=>t+(j.balance_cents||0),0)):''}</button>`}).join('')}</div>
+      <div class="panel">${rowsHtml(S.stale.filter(j=>cleanKind(j)===S.cleanF),true)}</div>`
     :`<form id="findForm" class="row" style="margin-bottom:12px"><input id="q" type="search" placeholder="Job number, customer name or city" value="${esc(S.q)}" aria-label="Find a job" style="flex:1;max-width:420px"><button class="primary" type="submit">${S.busy==='find'?'Searching…':'Search'}</button></form>
      <div class="panel">${S.found?rowsHtml(S.found,true):'<div class="empty">Search every job copied so far, including older ones.</div>'}</div>`}
   </div>`}
@@ -292,6 +330,7 @@ function dJob(j){
       ${full?`<dt>Address</dt><dd>${esc(full)} · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(full)}" target="_blank" rel="noopener">Map</a></dd>`:''}</dl>
      <p class="muted" style="margin:6px 0 0;font-size:12px">Opening a job's contact details is recorded.</p>`}</div>
    <div><h3>Parts on this job</h3>${d.loading?'<p class="muted">Loading…</p>':(d.parts||[]).length?`<ul class="hist" style="margin-top:6px">${d.parts.map(x=>`<li><span class="mono">${esc(x.tag)}</span> · <span class="mono">${esc(x.part_number)}</span>${x.qty>1?' × '+x.qty:''} ${esc(x.description||'')} ${pill(String(x.status||'').replace(/_/g,' '))}</li>`).join('')}</ul><p style="margin:6px 0 0"><a href="../parts/">Open the Parts desk</a></p>`:'<p class="muted" style="margin:4px 0">No parts requested for this job.</p>'}</div>
+   ${(d.intakes||[]).length?`<div><h3>Call intake</h3><ul class="hist" style="margin-top:6px">${d.intakes.map(i=>`<li>Taken by ${esc(i.csr||'the office')} on ${esc(fmtWhen(i.created_at))}${i.fee_total!=null?' · quoted $'+esc(i.fee_total):''}${Array.isArray(i.units)&&i.units.length?' · '+esc(i.units.map(u=>[u.app,u.svc&&'('+u.svc+')'].filter(Boolean).join(' ')).filter(Boolean).join(', ')):''}</li>`).join('')}</ul><p class="muted" style="margin:6px 0 0;font-size:12px">The full answers are in the job notes below.</p></div>`:''}
    ${(d.wos||[]).length?`<div><h3>Work order</h3><ul class="hist" style="margin-top:6px">${d.wos.map(w=>`<li><span class="mono">${esc(w.ref||'')}</span> ${esc(w.source_name||w.source||'')} ${pill(String(w.status||''))}</li>`).join('')}</ul><p style="margin:6px 0 0"><a href="../workorders/">Open Work orders</a></p></div>`:''}
    ${!d.loading&&p&&(p.notes||[]).length?`<div><h3>Job notes</h3>${p.notes.map(n=>`<div class="note" style="margin-top:6px">${esc(n)}</div>`).join('')}</div>`:''}
   </div>
@@ -317,6 +356,7 @@ const A={
   tab:d=>{S.tab=d.t;render();if(d.t==='find'){const q=$('q');if(q)q.focus()}},
   day:d=>{S.day=d.n==='0'?today():addDays(S.day,+d.n);render()},
   refresh:()=>load(),
+  cleanf:d=>{S.cleanF=d.k;render()},
   open:d=>openJob(d.id),
   close:()=>closeDlg(),
   enroll:()=>enroll(),
