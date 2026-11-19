@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#1e40af">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<title>City Appliance — Jobs</title>
+<style>
+:root{
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef1; --ink:#171a1e; --muted:#5d6670; --line:#d8dce1;
+  --accent:#1e40af; --accent-ink:#ffffff; --accent-text:#1e40af; --accent-soft:#e4ebfb;
+  --warn:#8a4b00; --warn-bg:#fcecd2; --good:#17623a; --good-bg:#dcf1e3; --bad:#9c241c; --bad-bg:#fae1de; --info:#1e40af; --info-bg:#e4ebfb;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --r:6px;
+}
+@media (prefers-color-scheme: dark){ :root{
+  --bg:#111315; --surface:#1a1d21; --sunk:#22262b; --ink:#e8eaed; --muted:#9aa3ad; --line:#2f353c;
+  --accent:#2f5fd0; --accent-ink:#ffffff; --accent-text:#8fb0ff; --accent-soft:#1a2748;
+  --warn:#f0b962; --warn-bg:#3a2c12; --good:#80d4a2; --good-bg:#14311f; --bad:#f39c94; --bad-bg:#3c1a17; --info:#8fb0ff; --info-bg:#1a2748;
+  color-scheme:dark } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{margin:0;font-weight:700}
+h1{font-size:18px} h2{font-size:16px} h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:13px} .muted{color:var(--muted)} .num{text-align:right;font-variant-numeric:tabular-nums}
+.grow{flex:1}
+.top{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.top .who{font-size:12px;opacity:.9}
+.wrap{max-width:1280px;margin:0 auto;padding:14px 16px 60px}
+button,.btn{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--accent-text)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.small{padding:4px 9px;font-size:13px}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.top button{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+.top button.primary{background:#fff;color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+.top input{max-width:320px;background:#fff;color:#171a1e;border-color:transparent}
+.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);margin:4px 0 14px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:9px 12px}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--accent-text)}
+.tabs .n{font-size:12px;padding:0 6px;border-radius:99px;background:var(--sunk);color:var(--ink);font-variant-numeric:tabular-nums}
+.tabs .n.hot{background:var(--warn-bg);color:var(--warn)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:8px 12px;background:var(--sunk);white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--sunk)}
+td.act{white-space:nowrap;text-align:right}
+td.act select{width:150px;display:inline-block}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.good{background:var(--good-bg);color:var(--good)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.info{background:var(--info-bg);color:var(--info)}
+.empty{padding:22px;color:var(--muted);text-align:center}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:9px 11px;margin:10px 0}
+.notice.bad{background:var(--bad-bg);color:var(--bad)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:22px;display:flex;flex-direction:column;gap:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld>span{font-size:12px;color:var(--muted);font-weight:600}
+.fld.wide{grid-column:1/-1}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:0;width:min(720px,94vw);max-height:90vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dhead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+.dbody{padding:16px;display:flex;flex-direction:column;gap:14px}
+.dfoot{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.hits{display:flex;flex-direction:column;gap:6px}
+.hit{text-align:left;white-space:normal;font-weight:400}
+.hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:50;font-weight:600}
+#toast.bad{background:var(--bad);color:#fff}
+#print{display:none}
+@media print{
+  @page{size:2.25in 1.25in;margin:0}
+  body{background:#fff} body>*:not(#print){display:none!important}
+  #print{display:block}
+  .label{width:2.25in;height:1.25in;padding:.06in .08in;color:#000;font:8pt/1.15 Arial,Helvetica,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+  .label .l1{display:flex;justify-content:space-between;font-weight:700;font-size:10pt}
+  .label .l2{font-family:Menlo,Consolas,monospace;font-size:9pt;font-weight:700}
+  .label svg{width:100%;height:.36in;margin:.02in 0}
+  .label .l4{font-size:7pt}
+}
+</style>
+<style>
+.daynav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+.daynav input[type=date]{width:auto}
+.daynav b{font-size:16px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px}
+.kv dt{color:var(--muted);font-size:12px;font-weight:600;padding-top:2px}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.note{white-space:pre-wrap;background:var(--sunk);border-radius:var(--r);padding:10px;font-size:13px;max-height:260px;overflow:auto}
+.qr{background:#fff;padding:8px;border-radius:var(--r);width:200px;height:200px;align-self:center}
+.code{font-family:var(--mono);font-size:20px;letter-spacing:.2em;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Jobs v1: a read-only view of Housecall Pro jobs copied into the site (tables jobs, job_private, access_log;
+   see supabase/migrations/*jobs_mirror.sql and supabase/functions/jobs-sync). Nothing here writes to Housecall Pro.
+   The database decides who sees what: office roles and senior technicians see every job, a technician only
+   their own for the next few days, and nobody without two-step sign-in sees any. Opening a job's contact
+   details is recorded in access_log. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const TZ='America/Chicago';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+const money=c=>c==null?'':'$'+(c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const dayKey=d=>new Date(d).toLocaleDateString('en-CA',{timeZone:TZ});
+const today=()=>dayKey(Date.now());
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+const fmtDay=iso=>new Date(iso+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',timeZone:'UTC'});
+const fmtTime=d=>new Date(d).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:TZ});
+const fmtWhen=d=>d?new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:TZ}):'';
+/* The arrival window the customer was given: start time plus the window, as Housecall Pro shows it. */
+const windowOf=j=>{if(!j.scheduled_start)return 'Not scheduled';const s=new Date(j.scheduled_start),e=j.arrival_window?new Date(s.getTime()+j.arrival_window*6e4):j.scheduled_end&&new Date(j.scheduled_end);return fmtTime(s)+(e?' to '+fmtTime(e):'')};
+const phone=p=>{const d=String(p||'').replace(/\D/g,'');return d.length===10?`(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`:String(p||'')};
+
+const STATUS={'needs scheduling':['Needs scheduling','warn'],scheduled:['Scheduled','info'],'in progress':['In progress','good'],'complete unrated':['Complete','good'],'complete rated':['Complete','good'],'user canceled':['Cancelled','bad'],'pro canceled':['Cancelled','bad']};
+const stat=j=>{const s=STATUS[j.work_status]||[j.work_status||'Unknown',''];return pill(s[0],s[1])};
+const closed=j=>/complete|cancel/.test(j.work_status||'');
+const TABS=[['day','Day'],['unscheduled','Not scheduled'],['find','Find a job']];
+const S={session:null,me:null,aal:null,next:null,mfa:null,jobs:[],found:null,tab:'day',day:today(),q:'',loading:false,err:'',dlg:null,det:null,log:null,busy:''};
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const seesAll=()=>office()||(S.me&&S.me.role==='tech'&&S.me.senior);
+const roleLabel=()=>S.me.role==='csr'?(S.me.manager?'manager':'office'):S.me.role==='tech'&&S.me.senior?'senior tech':S.me.role;
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4200)}
+
+/* ---------- data ---------- */
+async function whoami(){
+  const {data}=await SB.from('profiles').select('display_name,email,role,manager,senior,hcp_employee_id').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+}
+async function checkAal(){
+  const {data}=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
+  S.aal=data?data.currentLevel:null;S.next=data?data.nextLevel:null;
+}
+async function load(){
+  S.loading=true;render();
+  const from=new Date(Date.now()-14*864e5).toISOString(),to=new Date(Date.now()+46*864e5).toISOString();
+  const [a,b]=await Promise.all([
+    SB.from('jobs').select('*').is('deleted_at',null).gte('scheduled_start',from).lte('scheduled_start',to).order('scheduled_start').limit(2000),
+    SB.from('jobs').select('*').is('deleted_at',null).is('scheduled_start',null).gte('hcp_created_at',new Date(Date.now()-60*864e5).toISOString()).order('hcp_created_at',{ascending:false}).limit(300)]);
+  S.loading=false;
+  if(a.error||b.error)S.err=(a.error||b.error).message;else{S.err='';S.jobs=(a.data||[]).concat(b.data||[])}
+  render();
+}
+async function find(){
+  const q=S.q.trim();if(q.length<2){S.found=null;render();return}
+  const safe=q.replace(/[,()%*\\]/g,' ').trim();
+  S.busy='find';render();
+  const {data,error}=await SB.from('jobs').select('*').is('deleted_at',null).or(`job_number.ilike.%${safe}%,customer_name.ilike.%${safe}%,city.ilike.%${safe}%`).order('scheduled_start',{ascending:false,nullsFirst:false}).limit(60);
+  S.busy='';if(error){toast(error.message,true);return}
+  S.found=data||[];render();
+}
+const job=id=>S.jobs.find(j=>j.id===id)||(S.found||[]).find(j=>j.id===id);
+async function openJob(id){
+  const j=job(id);if(!j)return;
+  S.dlg={type:'job',id};S.det={loading:true};renderDlg();
+  const calls=[SB.rpc('job_details',{p_job:id}),
+    j.job_number?SB.from('parts').select('tag,part_number,description,status,qty').eq('job_number',j.job_number).limit(50):Promise.resolve({data:[]})];
+  if(office()&&j.job_number)calls.push(SB.from('work_orders').select('*').eq('hcp_job_number',j.job_number).limit(5));
+  const [d,p,w]=await Promise.all(calls);
+  if(!S.dlg||S.dlg.id!==id)return;
+  S.det={priv:d.error?null:(d.data||{}),err:d.error?d.error.message:'',parts:p.data||[],wos:(w&&w.data)||[]};renderDlg();
+}
+
+/* ---------- sign-in and two-step ---------- */
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance Jobs</h2>
+  <p class="muted">Sign in with your City Appliance email and password. If you are already signed in on Home, reload this page.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account does not have access to Jobs. Ask Jake to set your role.</p>
+  <p><a href="../home/">Back to Home</a></p><button data-a="signout">Sign out</button></div>`}
+function vVerify(){return `<form class="card" id="mfa"><h2>Enter your sign-in code</h2>
+  <p class="muted">Jobs holds customer details, so it asks for the 6-digit code from your authenticator app.</p>
+  <input id="mfaCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code" required>
+  <button class="primary" type="submit">${S.busy==='mfa'?'Checking…':'Continue'}</button><div id="mfaMsg" class="muted" role="status"></div>
+  <p class="muted" style="margin:0">Lost your phone? Ask Jake to reset your two-step sign-in.</p>
+  <p style="margin:0"><a href="../home/">Back to Home</a></p></form>`}
+function vEnroll(){
+  if(!S.mfa)return `<div class="card"><h2>Set up two-step sign-in</h2>
+    <p>Jobs holds customer names, addresses and phone numbers. To open it, your account needs a second step: a 6-digit code from an authenticator app on your phone.</p>
+    <p class="muted">Use any authenticator app, for example Microsoft Authenticator, Google Authenticator or the one built into your phone's password manager. It takes about a minute and you only set it up once.</p>
+    <button class="primary" data-a="enroll">${S.busy==='enroll'?'Starting…':'Set it up now'}</button><div id="mfaMsg" class="muted" role="status"></div>
+    <p style="margin:0"><a href="../home/">Back to Home</a></p></div>`;
+  return `<form class="card" id="mfa"><h2>Scan this with your authenticator app</h2>
+    <img class="qr" src="${esc(S.mfa.qr)}" alt="QR code for your authenticator app">
+    <p class="muted" style="margin:0">Cannot scan? Type this key into the app instead:<br><span class="mono" style="overflow-wrap:anywhere">${esc(S.mfa.secret)}</span></p>
+    <label class="fld"><span>Then type the 6-digit code the app shows</span><input id="mfaCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required></label>
+    <button class="primary" type="submit">${S.busy==='mfa'?'Checking…':'Finish setup'}</button><div id="mfaMsg" class="muted" role="status"></div></form>`}
+async function enroll(){
+  S.busy='enroll';render();
+  try{
+    /* An earlier setup that was started and never finished would block a new one, so clear those first. */
+    const lf=await SB.auth.mfa.listFactors();
+    for(const f of ((lf.data&&lf.data.all)||[]).filter(f=>f.status!=='verified'))await SB.auth.mfa.unenroll({factorId:f.id});
+    const {data,error}=await SB.auth.mfa.enroll({factorType:'totp',friendlyName:'City Appliance '+new Date().toISOString().slice(0,16)});
+    if(error)throw error;
+    S.mfa={id:data.id,qr:data.totp.qr_code,secret:data.totp.secret};
+  }catch(e){S.busy='';render();const m=$('mfaMsg');if(m)m.textContent='Could not start setup: '+(e.message||e);return}
+  S.busy='';render();const c=$('mfaCode');if(c)c.focus();
+}
+async function verify(code){
+  S.busy='mfa';
+  try{
+    let factorId=S.mfa&&S.mfa.id;
+    if(!factorId){const lf=await SB.auth.mfa.listFactors();const f=((lf.data&&lf.data.totp)||[])[0];if(!f)throw new Error('No authenticator is set up on this account.');factorId=f.id}
+    const {error}=await SB.auth.mfa.challengeAndVerify({factorId,code});
+    if(error)throw error;
+  }catch(e){S.busy='';const m=$('mfaMsg');if(m)m.textContent=/invalid|expired/i.test(e.message||'')?'That code did not match. Wait for a new one and try again.':(e.message||String(e));return}
+  S.busy='';S.mfa=null;
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  await checkAal();render();if(S.aal==='aal2')load();
+}
+
+/* ---------- views ---------- */
+function rowsHtml(rows,showDay){
+  return rows.length?`<div class="scroll"><table><thead><tr><th>${showDay?'When':'Arrival window'}</th><th>Job</th><th>Customer</th><th>What</th><th>Technician</th><th>Status</th></tr></thead><tbody>
+    ${rows.map(j=>`<tr data-a="open" data-id="${j.id}">
+      <td style="white-space:nowrap">${showDay&&j.scheduled_start?esc(new Date(j.scheduled_start).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:TZ}))+'<br><span class="muted">'+esc(windowOf(j))+'</span>':esc(windowOf(j))}</td>
+      <td class="mono">#${esc(j.job_number||'')}</td>
+      <td>${esc(j.customer_name||'')}<br><span class="muted">${esc([j.city,j.zip].filter(Boolean).join(' '))}</span></td>
+      <td>${esc(String(j.description||'').slice(0,90))}${j.business_unit?`<br><span class="muted">${esc(j.business_unit)}</span>`:''}</td>
+      <td>${esc((j.tech_names||[]).join(', '))||'<span class="muted">Unassigned</span>'}</td>
+      <td>${stat(j)}${j.balance_cents>0&&/complete/.test(j.work_status||'')?' '+pill('Balance '+money(j.balance_cents),'warn'):''}</td></tr>`).join('')}</tbody></table></div>`
+    :`<div class="empty">${S.loading?'Loading…':'No jobs here.'}</div>`}
+function vMain(){
+  const dayJobs=S.jobs.filter(j=>j.scheduled_start&&dayKey(j.scheduled_start)===S.day).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
+  const uns=S.jobs.filter(j=>!j.scheduled_start&&!closed(j));
+  const last=S.jobs.reduce((m,j)=>j.synced_at>m?j.synced_at:m,'');
+  const open=dayJobs.filter(j=>!closed(j)).length;
+  return `<header class="top"><a href="../home/" style="color:inherit;text-decoration:none;opacity:.9" aria-label="Back to Home">← Home</a><h1>Jobs</h1>
+   <span class="grow"></span>
+   ${S.me.role==='admin'?`<button data-a="sync">${S.busy==='sync'?'Syncing…':'Sync now'}</button><button data-a="log">Who viewed</button>`:''}
+   <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(roleLabel())}</span><button data-a="signout">Sign out</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice bad">Could not load jobs: ${esc(S.err)}</div>`:''}
+   ${!seesAll()?`<div class="notice" style="margin-top:0">${S.me.hcp_employee_id?'You see the jobs assigned to you, from two days back to five days ahead.':'Your account is not linked to your Housecall Pro login yet, so no jobs show. Ask Jake to check that both use the same email.'}</div>`:''}
+   <p class="muted" style="margin:0 0 6px">Copied from Housecall Pro${last?', last updated '+esc(fmtWhen(last)):''}. To change a job, use Housecall Pro for now.</p>
+   <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l}${k==='unscheduled'?` <span class="n${uns.length?' hot':''}">${uns.length}</span>`:''}</button>`).join('')}</div>
+   ${S.tab==='day'?`<div class="daynav"><button data-a="day" data-n="-1" aria-label="Previous day">←</button><button data-a="day" data-n="0">Today</button><button data-a="day" data-n="1" aria-label="Next day">→</button>
+      <input type="date" id="dayPick" value="${esc(S.day)}" aria-label="Pick a day"><b>${esc(fmtDay(S.day))}</b><span class="muted">${dayJobs.length} job${dayJobs.length===1?'':'s'}${dayJobs.length?', '+open+' still open':''}</span></div>
+     <div class="panel">${rowsHtml(dayJobs,false)}</div>`
+    :S.tab==='unscheduled'?`<div class="panel">${rowsHtml(uns,true)}</div>`
+    :`<form id="findForm" class="row" style="margin-bottom:12px"><input id="q" type="search" placeholder="Job number, customer name or city" value="${esc(S.q)}" aria-label="Find a job" style="flex:1;max-width:420px"><button class="primary" type="submit">${S.busy==='find'?'Searching…':'Search'}</button></form>
+     <div class="panel">${S.found?rowsHtml(S.found,true):'<div class="empty">Search every job copied so far, including older ones.</div>'}</div>`}
+  </div>`}
+
+function dJob(j){
+  const d=S.det||{},p=d.priv;
+  const addr=p?[p.street,p.street2].filter(Boolean).join(', '):'';
+  const full=p?[addr,j.city,[p.state,j.zip].filter(Boolean).join(' ')].filter(Boolean).join(', '):'';
+  return `<div class="dhead"><h2 class="mono">#${esc(j.job_number||'')}</h2>${stat(j)}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody">
+   <dl class="kv">
+    <dt>Customer</dt><dd><b>${esc(j.customer_name||'')}</b></dd>
+    <dt>When</dt><dd>${j.scheduled_start?esc(fmtDay(dayKey(j.scheduled_start)))+', '+esc(windowOf(j)):'Not scheduled'}</dd>
+    <dt>Technician</dt><dd>${esc((j.tech_names||[]).join(', '))||'Unassigned'}</dd>
+    <dt>What</dt><dd>${esc(j.description||'')}</dd>
+    ${j.business_unit?`<dt>Business unit</dt><dd>${esc(j.business_unit)}</dd>`:''}
+    ${(j.tags||[]).length?`<dt>Tags</dt><dd>${j.tags.map(t=>pill(t)).join(' ')}</dd>`:''}
+    ${office()||(S.me.role==='tech'&&S.me.senior)?`<dt>Total</dt><dd>${money(j.total_cents)}${j.balance_cents>0?' · balance '+money(j.balance_cents):j.total_cents?' · paid':''}</dd>`:''}
+    ${j.on_my_way_at||j.started_at||j.completed_at?`<dt>Visit</dt><dd>${[j.on_my_way_at&&'On the way '+fmtWhen(j.on_my_way_at),j.started_at&&'Started '+fmtWhen(j.started_at),j.completed_at&&'Finished '+fmtWhen(j.completed_at)].filter(Boolean).map(esc).join(' · ')}</dd>`:''}
+   </dl>
+   <div><h3>Contact and address</h3>
+    ${d.loading?'<p class="muted">Loading…</p>':d.err?`<div class="notice bad">${esc(d.err)}</div>`:`<dl class="kv" style="margin-top:6px">
+      ${p.phone_mobile?`<dt>Mobile</dt><dd><a href="tel:${esc(p.phone_mobile)}">${esc(phone(p.phone_mobile))}</a></dd>`:''}
+      ${p.phone_home?`<dt>Home</dt><dd><a href="tel:${esc(p.phone_home)}">${esc(phone(p.phone_home))}</a></dd>`:''}
+      ${p.phone_work?`<dt>Work</dt><dd><a href="tel:${esc(p.phone_work)}">${esc(phone(p.phone_work))}</a></dd>`:''}
+      ${p.email?`<dt>Email</dt><dd>${esc(p.email)}</dd>`:''}
+      ${full?`<dt>Address</dt><dd>${esc(full)} · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(full)}" target="_blank" rel="noopener">Map</a></dd>`:''}</dl>
+     <p class="muted" style="margin:6px 0 0;font-size:12px">Opening a job's contact details is recorded.</p>`}</div>
+   <div><h3>Parts on this job</h3>${d.loading?'<p class="muted">Loading…</p>':(d.parts||[]).length?`<ul class="hist" style="margin-top:6px">${d.parts.map(x=>`<li><span class="mono">${esc(x.tag)}</span> · <span class="mono">${esc(x.part_number)}</span>${x.qty>1?' × '+x.qty:''} ${esc(x.description||'')} ${pill(String(x.status||'').replace(/_/g,' '))}</li>`).join('')}</ul><p style="margin:6px 0 0"><a href="../parts/">Open the Parts desk</a></p>`:'<p class="muted" style="margin:4px 0">No parts requested for this job.</p>'}</div>
+   ${(d.wos||[]).length?`<div><h3>Work order</h3><ul class="hist" style="margin-top:6px">${d.wos.map(w=>`<li><span class="mono">${esc(w.ref||'')}</span> ${esc(w.source_name||w.source||'')} ${pill(String(w.status||''))}</li>`).join('')}</ul><p style="margin:6px 0 0"><a href="../workorders/">Open Work orders</a></p></div>`:''}
+   ${!d.loading&&p&&(p.notes||[]).length?`<div><h3>Job notes</h3>${p.notes.map(n=>`<div class="note" style="margin-top:6px">${esc(n)}</div>`).join('')}</div>`:''}
+  </div>
+  <div class="dfoot"><span class="muted" style="font-size:12px;align-self:center">Read-only copy</span><span class="grow"></span>
+   ${office()?`<a class="btn" style="text-decoration:none" href="https://pro.housecallpro.com/app/jobs/${encodeURIComponent(j.hcp_job_id)}" target="_blank" rel="noopener">Open in Housecall Pro</a>`:''}<button class="primary" data-a="close">Done</button></div>`}
+function dLog(){
+  const L=S.log;
+  return `<div class="dhead"><h2>Who viewed customer details</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
+  <div class="dbody"><p class="muted" style="margin:0">The latest 200 times someone opened a job's contact details. Only admins can see this list, and nobody can edit it.</p>
+   ${!L?'<p class="muted">Loading…</p>':L.length?`<div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Job</th><th>Customer</th></tr></thead><tbody>
+     ${L.map(r=>`<tr style="cursor:default"><td style="white-space:nowrap">${esc(fmtWhen(r.at))}</td><td>${esc(r.user_name||'')}</td><td class="mono">#${esc(r.job_number||'')}</td><td>${esc(r.customer_name||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nothing recorded yet.</div>'}</div>`}
+function renderDlg(){
+  const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
+  const j=S.dlg.type==='job'?job(S.dlg.id):null;
+  if(S.dlg.type==='job'&&!j){S.dlg=null;if(d.open)d.close();return}
+  d.innerHTML=S.dlg.type==='job'?dJob(j):dLog();
+  if(!d.open)d.showModal();
+}
+function closeDlg(){S.dlg=null;S.det=null;const d=$('dlg');if(d.open)d.close()}
+
+/* ---------- actions ---------- */
+const A={
+  tab:d=>{S.tab=d.t;render();if(d.t==='find'){const q=$('q');if(q)q.focus()}},
+  day:d=>{S.day=d.n==='0'?today():addDays(S.day,+d.n);render()},
+  refresh:()=>load(),
+  open:d=>openJob(d.id),
+  close:()=>closeDlg(),
+  enroll:()=>enroll(),
+  signout:async()=>{await SB.auth.signOut();location.reload()},
+  sync:async()=>{if(S.busy)return;S.busy='sync';render();
+    try{const r=await fetch(CFG.supabaseUrl+'/functions/v1/jobs-sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:'{}'});
+      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));
+      toast(`Copied ${j.jobs} jobs from Housecall Pro.`+(j.capped?' There were more than one run can take; run it again.':''))}
+    catch(e){toast('Sync failed: '+e.message,true)}
+    S.busy='';await load()},
+  log:async()=>{S.dlg={type:'log'};S.log=null;renderDlg();
+    const {data,error}=await SB.from('access_log').select('at,user_name,job_number,customer_name').order('at',{ascending:false}).limit(200);
+    if(error){toast(error.message,true);return}
+    if(S.dlg&&S.dlg.type==='log'){S.log=data||[];renderDlg()}}
+};
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;
+  if(el.dataset.a==='open'&&e.target.closest('button,select,input,a'))return;
+  A[el.dataset.a](el.dataset,el)});
+document.addEventListener('change',e=>{if(e.target.id==='dayPick'&&e.target.value){S.day=e.target.value;render()}});
+document.addEventListener('input',e=>{if(e.target.id==='q')S.q=e.target.value;if(e.target.id==='mfaCode')e.target.value=e.target.value.replace(/\D/g,'').slice(0,6)});
+document.addEventListener('submit',async e=>{e.preventDefault();
+  if(e.target.id==='findForm'){find();return}
+  if(e.target.id==='mfa'){const c=$('mfaCode').value.trim();if(c.length!==6){$('mfaMsg').textContent='Type all 6 digits.';return}$('mfaMsg').textContent='Checking…';verify(c);return}
+  if(e.target.id!=='login')return;
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await start()});
+$('dlg').addEventListener('close',()=>{S.dlg=null;S.det=null});
+
+function render(){
+  $('app').innerHTML=!SB?'<div class="card"><h2>Jobs</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vWaiting():S.aal!=='aal2'?(S.next==='aal2'?vVerify():vEnroll()):vMain();
+  const c=$('mfaCode');if(c&&S.aal!=='aal2'&&!c.value)c.focus();
+}
+async function start(){
+  await whoami();
+  if(allowed())await checkAal();
+  render();
+  if(allowed()&&S.aal==='aal2')load();
+}
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  if(session)await start();else render();
+})();
+</script>
+</body>
+</html>
