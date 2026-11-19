@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#161b22">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
+<title>City Appliance — Schedule</title>
+<style>
+h1,h2{margin:0}
+.muted{color:var(--muted)} .grow{flex:1}
+.top{display:flex}
+.wrap{max-width:none;padding-top:10px;padding-bottom:70px}
+button,.btn{padding:7px 12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;min-height:36px}
+button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-text);color:var(--accent-text)}
+input{padding:7px 9px;min-height:36px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;margin-bottom:10px}
+.bar .grp{display:flex;gap:4px}
+.bar label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.bar label.chk{flex-direction:row;align-items:center;gap:6px;font-size:14px;color:var(--ink);min-height:36px}
+.bar label.chk input{min-height:0;width:18px;height:18px}
+.range{font-size:16px;font-weight:600;margin:0 4px;align-self:center}
+.panel{overflow-x:auto}
+/* Week: one row per technician, one column per day. */
+.wk{display:grid;grid-template-columns:128px repeat(7,minmax(132px,1fr));min-width:1052px}
+.wk>div{border-top:1px solid var(--line);border-left:1px solid var(--line);padding:6px;min-width:0}
+.wk>.hd{border-top:0;background:var(--sunk);font-size:12px;color:var(--muted);font-weight:500;padding:8px 6px;position:sticky;top:0}
+.wk>.hd b{display:block;font-size:14px;color:var(--ink)}
+.wk>.hd.today{background:var(--accent-soft)} .wk>.hd.today b{color:var(--accent-text)}
+.wk>.who,.wk>.hd:first-child{border-left:0}
+.wk>.who{font-weight:600;background:var(--surface);position:sticky;left:0;z-index:1}
+.wk>.who span{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.wk>.cell{display:flex;flex-direction:column;gap:5px}
+.wk>.cell.today{background:color-mix(in srgb,var(--accent-soft) 35%,transparent)}
+.job{display:block;border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:5px;padding:5px 7px;text-decoration:none;color:var(--ink);background:var(--surface);font-size:13px;line-height:1.3}
+.job:hover{border-color:var(--accent-text)}
+.job b{display:block;font-size:12px;font-variant-numeric:tabular-nums}
+.job .st{display:block;font-size:11px;font-weight:600;color:var(--muted)}
+.job.info{border-left-color:var(--info)} .job.info .st{color:var(--info)}
+.job.good{border-left-color:var(--good)} .job.good .st{color:var(--good)}
+.job.warn{border-left-color:var(--warn)} .job.warn .st{color:var(--warn)}
+.job.bad{border-left-color:var(--bad);opacity:.75} .job.bad .st{color:var(--bad)} .job.bad .nm{text-decoration:line-through}
+.job .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+/* Day: a plain list, grouped by technician. */
+.dy h2{font-size:14px;padding:10px 14px;background:var(--sunk);border-top:1px solid var(--line);display:flex;gap:8px;align-items:baseline}
+.dy h2:first-child{border-top:0}
+.dy h2 span{font-weight:400;font-size:12px;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:4px 14px;padding:10px 14px;border-top:1px solid var(--line);text-decoration:none;color:var(--ink);min-height:44px}
+.row:hover{background:var(--sunk)}
+.row .t{flex:0 0 150px;font-weight:600;font-variant-numeric:tabular-nums}
+.row .m{flex:1 1 240px;min-width:0}
+.pill{background:var(--sunk);color:var(--muted)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)}
+.pill.good{background:var(--good-bg);color:var(--good)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.empty{padding:18px 14px;color:var(--muted)}
+.foot{margin-top:10px;font-size:13px}
+.card{max-width:400px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:12px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld>span{font-size:12px;color:var(--muted)}
+.fld input{padding:9px;width:100%}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600;justify-content:center}
+.notice{background:var(--bad-bg);color:var(--bad);border-radius:var(--r);padding:9px 11px;margin:0 0 10px}
+@media (max-width:860px){.bar button,.bar input{min-height:44px}.row .t{flex-basis:100%}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<script src="../shell.js" data-base="../" data-page="schedule" data-bar="1"></script>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Schedule: the Housecall Pro schedule, read from the site's own copy of the jobs (table jobs, filled by the
+   jobs-sync function). It only reads. The database decides who sees what, exactly as on the Jobs page: office
+   and senior technicians see every job, a technician their own, and nobody without the two-step sign-in sees any.
+   Clicking a job opens it on the Jobs page, where opening contact details is recorded. Times are Central. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const TZ='America/Chicago';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dayKey=d=>new Date(d).toLocaleDateString('en-CA',{timeZone:TZ});
+const today=()=>dayKey(Date.now());
+const addDays=(iso,n)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+const weekStart=iso=>addDays(iso,-new Date(iso+'T12:00:00Z').getUTCDay());   /* Sunday, as Housecall Pro shows it */
+const fmt=(iso,o)=>new Date(iso+'T12:00:00Z').toLocaleDateString('en-US',Object.assign({timeZone:'UTC'},o));
+const fmtTime=d=>new Date(d).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:TZ});
+const windowOf=j=>{const s=new Date(j.scheduled_start),e=j.arrival_window?new Date(s.getTime()+j.arrival_window*6e4):j.scheduled_end&&new Date(j.scheduled_end);return fmtTime(s)+(e?' to '+fmtTime(e):'')};
+const cut=(s,n)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s};
+const STATUS={'needs scheduling':['Needs scheduling','warn'],scheduled:['Scheduled','info'],'in progress':['In progress','good'],'complete unrated':['Complete','good'],'complete rated':['Complete','good'],'user canceled':['Cancelled','bad'],'pro canceled':['Cancelled','bad']};
+const st=j=>STATUS[j.work_status]||[j.work_status||'Unknown',''];
+const cancelled=j=>/cancel/.test(j.work_status||'');
+const NOBODY='No technician';
+const S={session:null,me:null,aal:null,view:innerWidth<860?'day':'week',day:today(),week:'',jobs:[],showCancelled:false,loading:false,err:''};
+const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const seesAll=()=>!!S.me&&(['csr','admin'].includes(S.me.role)||(S.me.role==='tech'&&S.me.senior));
+
+async function whoami(){
+  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+  const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();S.aal=a.data?a.data.currentLevel:null;
+}
+/* One week is loaded at a time: the week that holds the chosen day. */
+async function load(force){
+  const wk=weekStart(S.day);
+  if(!force&&wk===S.week){render();return}
+  S.loading=true;render();
+  const {data,error}=await SB.from('jobs')
+    .select('id,job_number,description,work_status,scheduled_start,scheduled_end,arrival_window,tech_names,customer_name,city,job_type,synced_at')
+    .is('deleted_at',null).gte('scheduled_start',addDays(wk,-1)+'T00:00:00Z').lt('scheduled_start',addDays(wk,8)+'T12:00:00Z')
+    .order('scheduled_start').limit(3000);
+  if(wk!==weekStart(S.day))return;   /* the person moved on while this was loading */
+  S.loading=false;
+  if(error){S.err=error.message}else{S.err='';S.week=wk;S.jobs=(data||[]).map(j=>Object.assign(j,{day:dayKey(j.scheduled_start)})).sort((x,y)=>String(x.scheduled_start).localeCompare(String(y.scheduled_start)))}
+  render();
+}
+const days=()=>Array.from({length:7},(_,i)=>addDays(weekStart(S.day),i));
+const shown=()=>S.jobs.filter(j=>S.showCancelled||!cancelled(j));
+const techsOf=j=>Array.isArray(j.tech_names)&&j.tech_names.length?j.tech_names:[NOBODY];
+const techList=jobs=>[...new Set(jobs.flatMap(techsOf))].sort((a,b)=>(a===NOBODY)-(b===NOBODY)||a.localeCompare(b));
+const link=j=>j.job_number?`../jobs/#find=${encodeURIComponent(j.job_number)}`:'../jobs/';
+
+function vWeek(){
+  const D=days(),J=shown().filter(j=>D.includes(j.day)),T=techList(J),td=today();
+  if(!J.length)return `<div class="panel"><div class="empty">${S.loading?'Loading…':'Nothing is on the schedule for this week.'}</div></div>`;
+  return `<div class="panel"><div class="wk" role="table" aria-label="Week schedule">
+    <div class="hd" role="columnheader">Technician</div>
+    ${D.map(d=>`<div class="hd${d===td?' today':''}" role="columnheader"><b>${fmt(d,{weekday:'short',month:'short',day:'numeric'})}</b>${J.filter(j=>j.day===d).length} jobs${d===td?' · today':''}</div>`).join('')}
+    ${T.map(t=>{const mine=J.filter(j=>techsOf(j).includes(t));
+      return `<div class="who" role="rowheader">${esc(t)}<span>${mine.length} this week</span></div>`
+        +D.map(d=>`<div class="cell${d===td?' today':''}" role="cell">${mine.filter(j=>j.day===d).map(j=>{const s=st(j);
+          return `<a class="job ${s[1]}" href="${link(j)}" title="${esc([j.job_number?'Job '+j.job_number:'',j.job_type,cut(j.description,160)].filter(Boolean).join(' · '))}"><b>${esc(windowOf(j))}</b><span class="nm">${esc(j.customer_name||'No name')}</span><span class="muted nm">${esc(j.city||'')}</span><span class="st">${esc(s[0])}</span></a>`}).join('')}</div>`).join('')}).join('')}
+  </div></div>`;
+}
+function vDay(){
+  const J=shown().filter(j=>j.day===S.day),T=techList(J);
+  if(!J.length)return `<div class="panel"><div class="empty">${S.loading?'Loading…':'Nothing is on the schedule for this day.'}</div></div>`;
+  return `<div class="panel dy">${T.map(t=>{const mine=J.filter(j=>techsOf(j).includes(t));
+    return `<h2>${esc(t)}<span>${mine.length} ${mine.length===1?'job':'jobs'}</span></h2>`+mine.map(j=>{const s=st(j);
+      return `<a class="row" href="${link(j)}"><span class="t">${esc(windowOf(j))}</span>
+        <span class="m"><b>${esc(j.customer_name||'No name')}</b>${j.city?' · '+esc(j.city):''}${j.job_number?` <span class="mono muted">Job ${esc(j.job_number)}</span>`:''}<br>
+        <span class="muted">${esc(cut([j.job_type,j.description].filter(Boolean).join(': '),150))}</span></span>
+        <span><span class="pill ${s[1]}">${esc(s[0])}</span></span></a>`}).join('')}).join('')}</div>`;
+}
+function vPage(){
+  const D=days(),wk=S.view==='week';
+  const label=wk?`${fmt(D[0],{month:'short',day:'numeric'})} to ${fmt(D[6],{month:'short',day:'numeric',year:'numeric'})}`:fmt(S.day,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const last=S.jobs.reduce((m,j)=>j.synced_at&&j.synced_at>m?j.synced_at:m,'');
+  const gone=S.jobs.filter(cancelled).length;
+  return `<header class="top"><h1>Schedule</h1><span class="grow"></span><button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice">The schedule could not be loaded: ${esc(S.err)}</div>`:''}
+   <div class="bar">
+    <div class="grp"><button data-a="move" data-n="-1" aria-label="${wk?'Previous week':'Previous day'}">←</button><button data-a="today">Today</button><button data-a="move" data-n="1" aria-label="${wk?'Next week':'Next day'}">→</button></div>
+    <span class="range">${label}</span><span class="grow"></span>
+    <label>Go to date<input type="date" id="jump" value="${S.day}"></label>
+    <div class="grp" role="group" aria-label="View"><button data-a="view" data-v="week" aria-pressed="${wk}">Week</button><button data-a="view" data-v="day" aria-pressed="${!wk}">Day</button></div>
+    <label class="chk"><input type="checkbox" id="canc" ${S.showCancelled?'checked':''}>Show cancelled${gone?` (${gone})`:''}</label>
+   </div>
+   ${wk?vWeek():vDay()}
+   <p class="muted foot">Copied from Housecall Pro about every 10 minutes${last?'; last copy '+new Date(last).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:TZ}):''}. Jobs only: time off and other calendar blocks are not shown yet. ${seesAll()?'':'You see your own jobs. '}Click a job to open it on the Jobs page.</p>
+  </div>`;
+}
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
+  <p class="muted">Sign in with your City Appliance email and password.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vNoAccess(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account cannot open the schedule. Ask Jake to set your role.</p>
+  <a class="btn" href="../home/">Go to Home</a></div>`}
+function vCode(){return `<div class="card"><h2>One more step</h2>
+  <p>The schedule shows customer names, so it needs your two-step sign-in code. Enter the code on the Jobs page, then come back here.</p>
+  <a class="btn primary" href="../jobs/">Go to Jobs to enter the code</a></div>`}
+function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);
+  $('app').innerHTML=!SB?'<div class="card"><h2>Schedule</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vNoAccess():S.aal!=='aal2'?vCode():vPage();
+}
+const ready=()=>S.session&&allowed()&&S.aal==='aal2';
+
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a;
+  if(a==='refresh')load(true);
+  if(a==='move'){S.day=addDays(S.day,Number(el.dataset.n)*(S.view==='week'?7:1));load()}
+  if(a==='today'){S.day=today();load()}
+  if(a==='view'){S.view=el.dataset.v;render()}
+  if(a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+document.addEventListener('change',e=>{
+  if(e.target.id==='jump'&&/^\d{4}-\d\d-\d\d$/.test(e.target.value)){S.day=e.target.value;load()}
+  if(e.target.id==='canc'){S.showCancelled=e.target.checked;render()}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(ready())load(true)});
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(ready())load(true);
+})();
+</script>
+</body>
+</html>
