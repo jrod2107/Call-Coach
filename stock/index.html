@@ -129,6 +129,7 @@ const STATUS={in_stock:'In stock',held:'Held',used:'Used on a job',sold:'Sold',r
 const TABS=[['stock','In stock'],['undecided','Not decided'],['ebay','eBay'],['restock','Restock'],['history','History']];
 const S={session:null,me:null,items:[],hist:[],cat:{},plan:[],locs:[],tab:'stock',q:'',loc:'',loading:false,err:'',dlg:null,scan:null,events:[],cam:null};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
 const editor=()=>!!S.me&&['csr','admin','stock'].includes(S.me.role);   /* may change what a part is, its cost and its eBay details */
 const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
 const item=id=>S.items.find(i=>i.id===id)||S.hist.find(i=>i.id===id);
@@ -143,7 +144,7 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  const {data}=await SB.from('profiles').select('display_name,email,role,manager').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
 }
 /* The API returns at most 1000 rows per request, so read in pages until a short page comes back. */
@@ -271,9 +272,9 @@ function vMain(){
    <select id="locf" aria-label="Location"><option value="">All locations</option>${locOpts(S.loc)}</select>
    <span class="grow"></span>
    <button class="primary" data-a="scan">Scan parts in</button>
-   ${office()?'<button data-a="invoice">Receive invoice</button><button data-a="locs">Locations</button>':''}
+   ${mgr()?'<button data-a="invoice">Receive invoice</button><button data-a="locs">Locations</button>':''}
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(mgr()&&S.me.role==='csr'?'manager':S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load stock: ${esc(S.err)}</div>`:''}
    <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${cnt[k]&&['undecided','restock'].includes(k)?' hot':''}">${cnt[k]}</span></button>`).join('')}</div>

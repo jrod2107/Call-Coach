@@ -71,8 +71,10 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Date().toLocaleDateString('en-CA');
 const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5);
-const ROLES=['admin','csr','tech','stock','pending'];
-const ROLE_NAME={admin:'Admin',csr:'Office',tech:'Technician',stock:'Stock helper',pending:'Waiting for access'};
+/* Manager is an Office (csr) account with profiles.manager set, so it is offered here as its own choice. */
+const ROLES=['admin','manager','csr','tech','stock','pending'];
+const ROLE_NAME={admin:'Admin',manager:'Manager',csr:'Office (takes calls)',tech:'Technician',stock:'Stock helper',pending:'Waiting for access'};
+const roleKey=u=>u&&u.role==='csr'&&u.manager?'manager':(u&&u.role);
 const TOOLS=[
   {href:'../parts/',name:'Parts desk',desc:'Request, order, receive and return parts.',roles:['admin','csr','tech']},
   {href:'../stock/',name:'Stock',desc:'Scan parts in, hold them for jobs, restock and eBay lists.',roles:['admin','csr','tech','stock']},
@@ -82,13 +84,14 @@ const TOOLS=[
 ];
 const S={session:null,me:null,parts:[],wos:[],intakes:[],team:[],loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
 const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
 
 let toastTimer;
 function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
 
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
 }
 async function load(){
@@ -96,13 +99,13 @@ async function load(){
   const since=new Date(Date.now()-7*864e5).toISOString();
   const jobs=[S.me.role==='stock'?Promise.resolve({data:[]}):SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
   if(office())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
-  if(S.me.role==='admin')jobs.push(SB.from('profiles').select('id,display_name,email,role').order('email'));
+  if(S.me.role==='admin')jobs.push(SB.from('profiles').select('id,display_name,email,role,manager').order('email'));
   const res=await Promise.all(jobs);
   S.loading=false;
   const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
   S.parts=res[0].data||[];
   if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];
-    const o=await SB.from('intake_other_issues').select('appliance,brand,issue,taken_by,created_at').gte('created_at',new Date(Date.now()-90*864e5).toISOString()).order('created_at',{ascending:false}).limit(500);S.others=o.data||[]}
+    const o=!mgr()?{data:[]}:await SB.from('intake_other_issues').select('appliance,brand,issue,taken_by,created_at').gte('created_at',new Date(Date.now()-90*864e5).toISOString()).order('created_at',{ascending:false}).limit(500);S.others=o.data||[]}
   S.intakes=office()&&res[1]?res[1].data||[]:[];
   S.team=S.me.role==='admin'&&res[2]?res[2].data||[]:[];
   render();
@@ -137,7 +140,7 @@ function vAttention(){
 /* Issues the office typed in under "Other" on Call intake, grouped by appliance. Three or more for one appliance
    in 90 days is flagged, as a sign the issue list for that appliance is missing something. */
 function vOthers(){
-  if(!office()||!(S.others||[]).length)return'';
+  if(!mgr()||!(S.others||[]).length)return'';
   const by={};S.others.forEach(o=>{(by[o.appliance]=by[o.appliance]||[]).push(o)});
   const rows=Object.entries(by).sort((a,b)=>b[1].length-a[1].length);
   return `<h3>Issues typed in under "Other" on Call intake, last 90 days</h3><div class="panel"><table><thead><tr><th>Appliance</th><th>Times</th><th>What was typed</th></tr></thead><tbody>
@@ -149,7 +152,7 @@ function vTeam(){
   if(S.me.role!=='admin')return'';
   return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>
    ${S.team.map(u=>`<tr><td><input data-user="${u.id}" data-k="display_name" value="${esc(u.display_name)}" placeholder="Name shown to the team" aria-label="Name for ${esc(u.email)}"></td><td>${esc(u.email)}</td>
-     <td>${u.id===S.me.id?esc(ROLE_NAME[u.role])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table></div>
+     <td>${u.id===S.me.id?esc(ROLE_NAME[roleKey(u)])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${roleKey(u)===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table></div>
    <p class="muted" style="margin-top:8px">New accounts are created in the Supabase dashboard and start as "Waiting for access". Set the role here to let someone in.</p>`;
 }
 function vHome(){
@@ -157,7 +160,7 @@ function vHome(){
   return `<header class="top"><h1>City Appliance</h1>
     <nav class="tools" aria-label="Tools">${TOOLS.filter(t=>t.roles.includes(S.me.role)).map(t=>`<a href="${t.href}" title="${t.desc}">${t.name}</a>`).join('')}</nav><span class="grow"></span>
     <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[S.me.role]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
+    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[roleKey(S.me)]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap"><h2>${first?'Hi, '+esc(first):'Home'}</h2><p class="muted">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
    ${S.err?`<div class="notice">Some numbers could not be loaded: ${esc(S.err)}</div>`:''}
    ${vAttention()}
@@ -182,9 +185,10 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]'
   if(el.dataset.a==='signout'){await SB.auth.signOut();location.reload()}});
 document.addEventListener('change',async e=>{const el=e.target;if(!el.dataset.user)return;
   const k=el.dataset.k,val=el.value.trim(),u=S.team.find(x=>x.id===el.dataset.user);
-  const {error}=await SB.from('profiles').update({[k]:val}).eq('id',el.dataset.user);
-  if(error){toast(error.message,true);if(u)el.value=u[k]||'';return}
-  if(u)u[k]=val;toast(k==='role'?`${u&&u.email?u.email:'Account'} is now ${ROLE_NAME[val]}.`:'Name saved.')});
+  const patch=k==='role'?(val==='manager'?{role:'csr',manager:true}:{role:val,manager:false}):{[k]:val};
+  const {error}=await SB.from('profiles').update(patch).eq('id',el.dataset.user);
+  if(error){toast(error.message,true);if(u)el.value=(k==='role'?roleKey(u):u[k])||'';return}
+  if(u)Object.assign(u,patch);toast(k==='role'?`${u&&u.email?u.email:'Account'} is now ${ROLE_NAME[val]}.`:'Name saved.')});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});

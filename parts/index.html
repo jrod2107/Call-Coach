@@ -117,6 +117,7 @@ const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backor
 const TONE={need_to_order:'warn',ordered:'info',backordered:'bad',shipped:'info',received:'good',returned:'warn'};
 const S={session:null,me:null,parts:[],vendors:[],locs:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
 const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const part=id=>S.parts.find(p=>p.id===id);
 const isOther=v=>!!v&&/^other$/i.test(v.name);
@@ -131,7 +132,7 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
+  const {data}=await SB.from('profiles').select('display_name,email,role,manager').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
 }
 async function load(){
@@ -230,9 +231,9 @@ function vMain(){
    <span class="grow"></span>
    <button class="primary" data-a="request">+ Request a part</button>
    <a href="../stock/" style="color:inherit;text-decoration:none;opacity:.9">Stock</a>
-   ${office()?'<button data-a="vendors">Vendors</button>':''}
+   ${mgr()?'<button data-a="vendors">Vendors</button>':''}
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(S.me.role)}</span><button data-a="signout">Sign out</button></header>
+   <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(mgr()&&S.me.role==='csr'?'manager':S.me.role)}</span><button data-a="signout">Sign out</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad">Could not load parts: ${esc(S.err)}</div>`:''}
    <div class="tabs">${TABS.map(t=>{const [k,l]=t,n=S.parts.filter(p=>inTab(t,p)).length;
@@ -271,7 +272,7 @@ function dPart(p){
       <button class="small" data-a="addpart" data-id="${p.id}" style="margin-top:8px">+ Add another part for this job</button></div>`})():''}
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
   </div>
-  <div class="dfoot">${o&&!['cancelled','credited','installed','stocked'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
+  <div class="dfoot">${mgr()&&!['cancelled','credited','installed','stocked'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
    <button data-a="print" data-id="${p.id}">Print tag</button><button class="primary" data-a="save" data-id="${p.id}">Save</button></div>`}
 function dRequest(){
   const r=S.req,o=office();
