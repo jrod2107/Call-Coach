@@ -21,6 +21,5 @@ create policy "source processes: admin edits" on public.work_order_source_proces
 create policy "source processes: admin removes" on public.work_order_source_processes for delete to authenticated using (public.is_admin());
 revoke all on public.work_order_source_processes from anon;
 
-insert into public.work_order_source_processes (name, process, updated_by_name) values
-  ('Hart Properties', 'Call Pat at Hart Properties to get approval. Their work orders do not usually state a limit; it is usually about $300.', 'Setup'),
-  ('3Z', 'Submit for approval through Rentvine and follow the next step there.', 'Setup');
+-- The rows themselves (which company, who to call, usual limits) are business details. They live only in the
+-- database and are edited on the Settings page; they are deliberately not kept in this file.
