@@ -235,7 +235,13 @@ const FEES = {
   // amount they add for a home (Driftwood +$20, Canyon Lake +$40).
   standardFee:125, commercialFee:200, commercialAdditionalApplianceFee:125
 };
-const BRANDS=["Whirlpool / Maytag / Roper / Amana","GE","Frigidaire","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
+// Main brands are one button each. Everything else goes through "Other", which suggests from OTHER_BRANDS as the CSR types.
+// Brands typed under Other are saved to intake_other_brands and counted on Home, so a common one can be moved up here.
+const OTHER_BRANDS=["Kenmore","Bosch","Speed Queen","JennAir","Haier","Hisense","Midea","Magic Chef","Insignia","Danby","Avanti","Crosley","Estate","Admiral","Inglis",
+  "Kelvinator","Gibson","Tappan","Westinghouse","White-Westinghouse","Sharp","Panasonic","Fisher & Paykel","Asko","Blomberg","Beko","Smeg","Bertazzoni","BlueStar","ZLINE",
+  "Forno","Cosmo","Fulgor Milano","Ilve","Verona","Capital","American Range","Scotsman","U-Line","Marvel","True","Perlick","Summit","Premier","Galanz","Vissani","IKEA",
+  "Caloric","Modern Maid","Hoover","Equator","Conservator","Criterion","Unique","Big Chill","Elmira","Hestan","Kucht","Hallman","Signature Kitchen Suite","Liebherr","Bosch Benchmark"];
+const BRANDS=["Whirlpool","Maytag","KitchenAid","Amana","Roper","GE","Hotpoint","Frigidaire","Electrolux","Samsung","LG","Wolf","Sub-Zero","Thermador","Thor","Viking","Miele","La Cornue","Gaggenau","Dacor","GE Monogram","Other"];
 const FEE_SCRIPT='"The diagnostic fee will cover the diagnosis and estimate of the repairs needed. When you move forward with a repair the fee will go towards the repair cost."';
 
 /* Question factory helpers */
@@ -457,7 +463,8 @@ function chargeOf(u){
 
 /* ---------- Shared follow-ups (diagnosis) ---------- */
 const SH_brand=Q("Brand of appliance",BRANDS,{req:1});
-const SH_brandOther=Q("Brand (other)",null,{showIf:[SH_brand.id,["Other"]]});
+const SH_brandOther=Q("Brand (other)",null,{showIf:[SH_brand.id,["Other"]],suggest:OTHER_BRANDS,
+  note:"Start typing, then click the brand if it shows up in the buttons. If it is not there, type it exactly as it is on the appliance."});
 const SH_tight=Q("Is the appliance in a tight space or hard-to-access area?",["Yes","No","Unsure"],{req:1,
   note:'"To help our tech get right to work, please make sure the area around the appliance is clear before he arrives. If it is in a tight spot, text us a quick photo and we will pass it along."',
   notes:{"Yes":{t:"Ask for a photo of the space by text so we can prepare.",k:"script",flag:"TIGHT ACCESS — photo requested"}}});
@@ -579,6 +586,11 @@ function otherIssues(){
       if(v&&visible(main,u.ans)&&visible(q,u.ans)) out.push({appliance:app.name,brand:brandOf(u)||null,issue:v.slice(0,300)}); }); });
   return out;
 }
+function otherBrands(){
+  const out=[]; if(isCommercial()) return out;
+  S.units.forEach(u=>{ if(u.ans[SH_brand.id]!=="Other") return; const b=String(u.ans[SH_brandOther.id]||"").trim(); if(b) out.push({brand:b.slice(0,80),appliance:u.app||null}); });
+  return out;
+}
 function textProblem(q,v){
   v=String(v||"").trim();
   if(!v) return q.req?"empty":"";
@@ -602,6 +614,12 @@ function globalQuestions(){
   return out;
 }
 
+// Suggestions under a typed answer: the list narrows as they type, and clicking one fills the answer in.
+function suggHtml(q,val,attr){
+  const v=String(val||"").trim().toLowerCase();
+  const hits=!v?q.suggest.slice(0,12):q.suggest.filter(b=>b.toLowerCase().includes(v)).sort((a,b)=>(a.toLowerCase().startsWith(v)?0:1)-(b.toLowerCase().startsWith(v)?0:1)).slice(0,10);
+  return hits.map(b=>'<button class="opt'+(b.toLowerCase()===v?' sel':'')+'" '+attr+' data-q="'+q.id+'" data-v="'+esc(b)+'">'+esc(b)+'</button>').join('');
+}
 function renderQ(q,scope,ui){
   // scope: "g" or unit index as string; ui: id suffix for wrapper uniqueness
   const ans = scope==="g" ? S.g : S.units[+scope].ans;
@@ -613,6 +631,7 @@ function renderQ(q,scope,ui){
   } else {
     h+='<textarea class="qtext" '+attr+' data-tq="'+q.id+'" placeholder="Type...">'+esc(ans[q.id]||"")+'</textarea>';
     const pr=textProblem(q,ans[q.id]); h+='<div class="qerr"'+(pr&&pr!=="empty"?'':' hidden')+'>'+esc(pr==="empty"?"":pr)+'</div>';
+    if(q.suggest) h+='<div class="opts sugg" style="margin-top:6px">'+suggHtml(q,ans[q.id],attr)+'</div>';
   }
   if(q.note) h+='<div class="note'+(q.safety||q.safetyNote?' safety':'')+(q.note.startsWith('"')?' script':'')+'">'+esc(q.note)+'</div>';
   const sel=ans[q.id];
@@ -807,7 +826,8 @@ document.addEventListener("input",e=>{
     if(t.dataset.u!=null){ const u=S.units[+t.dataset.u]; if(u) u.ans[t.dataset.tq]=t.value; }
     else { S.g[t.dataset.tq]=t.value; }
     const qq=ALLQ[t.dataset.tq], w=t.closest(".q");
-    if(qq&&w){ const pr=textProblem(qq,t.value); const tg=w.querySelector(".reqtag"); if(tg) tg.hidden=!pr; const er=w.querySelector(".qerr"); if(er){ er.hidden=!(pr&&pr!=="empty"); er.textContent=pr==="empty"?"":pr; } if(!pr) w.classList.remove("qmiss"); }
+    if(qq&&w){ const pr=textProblem(qq,t.value); const tg=w.querySelector(".reqtag"); if(tg) tg.hidden=!pr; const er=w.querySelector(".qerr"); if(er){ er.hidden=!(pr&&pr!=="empty"); er.textContent=pr==="empty"?"":pr; } if(!pr) w.classList.remove("qmiss");
+      if(qq.suggest){ const sb=w.querySelector(".sugg"); if(sb) sb.innerHTML=suggHtml(qq,t.value,t.dataset.u!=null?'data-u="'+t.dataset.u+'"':'data-g="1"'); } }
     save(); updateChecklist(); updateFee();
   }
   if(t.dataset&&t.dataset.c){ S.cust[t.dataset.c]=t.value; if(t.value.trim()){ const g=t.closest(".fgrp"); if(g) g.classList.remove("qmiss"); } save(); updateChecklist(); }
@@ -1229,6 +1249,7 @@ async function saveToHcp(kind){
     save();
     let woNote="";
     try{ const ins=await SB.from("intakes").insert({csr:S.csr||null,outcome:kind==="job"?"job":(kind==="lead_incomplete"?"incomplete":"lead"),customer:S.cust,units:S.units,globals:S.g,note,fee_total:feeParts().total,hcp_customer_id:cid,hcp_job_id:id}).select("id").single();
+      try{ const ob=otherBrands(); if(ob.length) await SB.from("intake_other_brands").insert(ob.map(o=>Object.assign({taken_by:S.csr||null,intake_id:ins.data?ins.data.id:null},o))); }catch(e){}
       try{ const oi=otherIssues(); if(oi.length) await SB.from("intake_other_issues").insert(oi.map(o=>Object.assign({taken_by:S.csr||null,intake_id:ins.data?ins.data.id:null},o))); }catch(e){}
       if(S.wo&&ins.data){
         if(kind==="job"){ const u=await SB.from("work_orders").update({status:"booked",intake_id:ins.data.id,hcp_job_number:number?String(number):null}).eq("id",S.wo.id).is("intake_id",null).select("id");
