@@ -337,7 +337,7 @@ function printTag(p){
 const A={
   tab:d=>{S.tab=d.t;render()},
   refresh:()=>load(),
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   open:d=>openPart(d.id),
   opensib:d=>openPart(d.id),
   close:()=>closeDlg(),

@@ -377,7 +377,7 @@ const cleaned=()=>{const E=S.edit,t=k=>String(E[k]==null?'':E[k]).trim()||null;
 const A={
   tab:d=>{S.tab=d.t;render()},
   refresh:()=>load(),
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   close:()=>closeDlg(),
   new:()=>{S.imp={busy:false,msg:'',tone:'',file:null};S.edit=Object.assign({},BLANK,{received_on:today()});S.dlg={type:'wo',id:null};renderDlg()},
   open:d=>{const w=wo(d.id);S.edit=Object.assign({},BLANK,Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v==null?'':v])));S.events=[];S.files=[];S.evnote='';S.dlg={type:'wo',id:d.id};renderDlg();loadDetail(d.id)},

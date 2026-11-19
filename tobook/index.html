@@ -174,7 +174,7 @@ function render(){
 
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
   if(el.dataset.a==='refresh')load();
-  if(el.dataset.a==='signout'){await SB.auth.signOut();location.reload()}});
+  if(el.dataset.a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});

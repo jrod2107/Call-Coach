@@ -63,6 +63,7 @@
     try{const {data:{session}}=await sb.auth.getSession();if(!session){AppShell.set(null);return}
       const {data}=await sb.from('profiles').select('display_name,email,role,manager,senior').eq('id',session.user.id).maybeSingle();
       if(data)AppShell.set(data)}catch(e){}}
+  window.AppShellSignOut=async()=>{try{await sb.auth.signOut({scope:'local'})}catch(e){} location.reload()};
   let opening=false;
   async function open(){
     if(opening)return;opening=true;   /* a password sign-in also raises SIGNED_IN; open once */
@@ -76,7 +77,7 @@
       try{localStorage.removeItem(KEY)}catch(e){}
       form.innerHTML='<h1></h1><p>This account does not have access to this page. Ask Jake to set your role.</p><button type="button" id="gate-out">Sign out</button>';
       form.querySelector('h1').textContent=title;
-      form.querySelector('#gate-out').addEventListener('click',async()=>{await sb.auth.signOut();location.reload()});return}
+      form.querySelector('#gate-out').addEventListener('click',async()=>{await sb.auth.signOut({scope:'local'});location.reload()});return}
     try{localStorage.setItem(KEY,JSON.stringify({sha:res.data.sha256,html:res.data.html}))}catch(e){}
     show(res.data.html);
   }
@@ -94,6 +95,13 @@
       :'Check your email for a sign-in link. It opens right back up here.')});
   (async()=>{
     let session=null;try{session=(await sb.auth.getSession()).data.session}catch(e){}
+    if(session){
+      /* A sign-in that was ended somewhere else still looks fine on this device until it runs out, but the server
+         turns it away. Ask the server; if it says the sign-in is gone, clear it here and show the sign-in screen.
+         No answer at all (offline) changes nothing, so a device that is offline keeps working. */
+      let gone=false;try{const r=await sb.auth.getUser();gone=!!(r.error&&(r.error.status===401||r.error.status===403))}catch(e){}
+      if(gone){try{await sb.auth.signOut({scope:'local'})}catch(e){} try{localStorage.removeItem(KEY)}catch(e){} session=null}
+    }
     if(session){open();return}
     if(window.AppShell)AppShell.set(null);
     /* A sign-in link lands here a moment before the library has finished reading it. */

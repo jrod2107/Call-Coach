@@ -108,6 +108,8 @@
     if(el.dataset.as==='signout'){
       /* Newer pages handle data-a="signout" themselves. Older pages have their own Sign out button: press it. */
       try{localStorage.removeItem(KEY)}catch(x){}
+      /* Pages behind the sign-in gate hand over a sign-out that ends this device's sign-in only. */
+      if(window.AppShellSignOut){window.AppShellSignOut();return}
       const old=document.getElementById('signOut');if(old)old.click();
     }
   });

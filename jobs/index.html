@@ -353,7 +353,7 @@ const A={
   open:d=>openJob(d.id),
   close:()=>closeDlg(),
   enroll:()=>enroll(),
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   sync:async()=>{if(S.busy)return;S.busy='sync';render();
     try{const r=await fetch(CFG.supabaseUrl+'/functions/v1/jobs-sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:'{}'});
       const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));

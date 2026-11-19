@@ -245,7 +245,7 @@ const A={
     const {error}=await SB.auth.resetPasswordForEmail(email.trim(),{redirectTo:HERE});
     msg.textContent=error?(/rate|limit|seconds/i.test(error.message)?'Too many emails were sent just now. Wait a few minutes and try again.':error.message)
       :'If that email has an account, a reset link is on its way. Open it on this device.'},
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   saveacct:async()=>{if(S.acct.busy)return;const name=$('acName').value.trim(),locEl=$('acLoc'),loc=locEl?(locEl.value||null):(S.me.default_location_id||null);
     if(!name){toast('Your name cannot be blank.',true);return}
     S.acct.busy=true;render();

@@ -294,7 +294,7 @@ function summaryText(){
 
 /* ---------- actions ---------- */
 const A={
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   model:d=>{S.q.model=d.id;S.q.tier='';S.q.parts.forEach(p=>{p.note=p.note&&p.sell===''?p.note:p.note});saveDraft();render()},
   tier:d=>{S.q.tier=d.id;saveDraft();render()},
   sameday:d=>{S.q.sameDay=d.v==='1';saveDraft();render()},

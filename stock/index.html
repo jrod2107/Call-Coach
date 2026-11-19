@@ -555,7 +555,7 @@ const jobFrom=id=>{const el=$(id);return el?el.value.trim().replace(/^#/,''):''}
 const A={
   tab:d=>{S.tab=d.t;render()},
   refresh:()=>load(),
-  signout:async()=>{await SB.auth.signOut();location.reload()},
+  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   open:d=>{if(d.unit){openUnit(d.unit);return}S.dlg={type:'part',pn:d.pn,unit:null};renderDlg()},
   unit:d=>openUnit(d.id),
   back:()=>{S.dlg.unit=null;renderDlg()},
