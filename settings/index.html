@@ -81,15 +81,21 @@ button:disabled{opacity:.45;cursor:not-allowed}
                     Managers also see the intake lists.
    The page only shows what the database will let that person do; row-level security and the functions decide. */
 const CFG=window.COACH_CONFIG||{};
+const HERE=location.origin+location.pathname;
 const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
 const $=id=>document.getElementById(id);
+/* A password reset link lands here. Only the sign-in library can say the link was genuine (it checks it with the
+   server and then reports PASSWORD_RECOVERY), so the "set a new password" form is shown on that signal alone and
+   never because of something typed into the address. Registered straight away so the signal is not missed. */
+let RECOVERY_SEEN=false;
+if(SB)SB.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){RECOVERY_SEEN=true;if(typeof S!=='undefined'){S.recovery=true;if(S.me)render()}}});
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtWhen=iso=>iso?new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
 /* Manager is an Office (csr) account with profiles.manager set; Senior technician is a tech with profiles.senior. */
 const ROLES=['admin','manager','csr','senior','tech','stock','pending'];
 const ROLE_NAME={admin:'Admin',manager:'Manager',csr:'Office (takes calls)',senior:'Senior technician',tech:'Technician',stock:'Stock helper',pending:'Waiting for access'};
 const roleKey=u=>u&&u.role==='csr'&&u.manager?'manager':u&&u.role==='tech'&&u.senior?'senior':(u&&u.role);
-const S={session:null,me:null,locs:[],team:[],procs:[],procEdit:null,others:[],brands:[],col:null,mail:[],loading:false,err:'',pw:{busy:false,msg:'',ok:false},acct:{busy:false}};
+const S={session:null,me:null,locs:[],team:[],procs:[],procEdit:null,others:[],brands:[],col:null,mail:[],loading:false,err:'',pw:{busy:false,msg:'',ok:false},acct:{busy:false},recovery:false};
 const admin=()=>!!S.me&&S.me.role==='admin';
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
@@ -134,15 +140,16 @@ function vAccount(){
    <div class="row"><button class="primary" data-a="saveacct" ${S.acct.busy?'disabled':''}>${S.acct.busy?'Saving…':'Save'}</button>
     <span class="muted">Signed in as ${esc(S.me.email||'')} · ${esc(ROLE_NAME[roleKey(S.me)]||S.me.role)}</span></div>
   </div>
-  <h3>Change my password</h3>
+  <h3>${S.recovery?'Set a new password':'Change my password'}</h3>
+  ${S.recovery?'<div class="notice" style="max-width:560px;margin:0 0 10px;background:var(--warn-bg);color:var(--warn)"><b>You opened a password reset link.</b> Choose a new password below to finish.</div>':''}
   <form class="box" id="pwform" autocomplete="off">
    <div class="fields">
-    <label class="fld"><span>Current password</span><input id="pwOld" type="password" autocomplete="current-password" required></label>
+    ${S.recovery?'':`<label class="fld"><span>Current password</span><input id="pwOld" type="password" autocomplete="current-password" required></label>`}
     <label class="fld"><span>New password</span><input id="pwNew" type="password" autocomplete="new-password" minlength="10" required></label>
     <label class="fld"><span>New password again</span><input id="pwNew2" type="password" autocomplete="new-password" minlength="10" required></label>
    </div>
    <div class="muted">At least 10 characters. You stay signed in on this device; other devices will need the new password next time they sign in.</div>
-   <div class="row"><button class="primary" type="submit" ${S.pw.busy?'disabled':''}>${S.pw.busy?'Changing…':'Change password'}</button>
+   <div class="row"><button class="primary" type="submit" ${S.pw.busy?'disabled':''}>${S.pw.busy?'Saving…':S.recovery?'Set new password':'Change password'}</button>
     ${S.pw.msg?`<span class="${S.pw.ok?'ok':'bad'}" role="status">${esc(S.pw.msg)}</span>`:''}</div>
   </form>`;
 }
@@ -150,10 +157,11 @@ function vAccount(){
 /* ---------- Company settings ---------- */
 function vTeam(){
   if(!admin())return'';
-  return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>
+  return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th></tr></thead><tbody>
    ${S.team.map(u=>`<tr><td><input data-user="${u.id}" data-k="display_name" value="${esc(u.display_name)}" placeholder="Name shown to the team" aria-label="Name for ${esc(u.email)}"></td><td>${esc(u.email)}</td>
-     <td>${u.id===S.me.id?esc(ROLE_NAME[roleKey(u)])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${roleKey(u)===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table></div>
-   <p class="muted" style="margin-top:8px">New accounts are created in the Supabase dashboard and start as "Waiting for access". Set the role here to let someone in.</p>`;
+     <td>${u.id===S.me.id?esc(ROLE_NAME[roleKey(u)])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${roleKey(u)===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td>
+     <td class="narrow">${u.id===S.me.id?'<span class="muted">Change it above</span>':`<button data-a="sendreset" data-id="${u.id}">Email a reset link</button>`}</td></tr>`).join('')}</tbody></table></div>
+   <p class="muted" style="margin-top:8px">New accounts are created in the Supabase dashboard and start as "Waiting for access". Set the role here to let someone in. A reset link is emailed to that person; it brings them to this page to choose a new password. You never see their password.</p>`;
 }
 function vProcs(){
   if(!office())return'';
@@ -223,7 +231,8 @@ function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
   <p class="muted">Sign in with your City Appliance email and password.</p>
   <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
   <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div>
+  <button type="button" data-a="forgot" style="border:0;background:none;color:var(--accent-text);padding:0;text-align:left">Forgot your password?</button></form>`}
 function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given a role yet. Ask Jake to set it.</p>
   <button data-a="signout">Sign out</button></div>`}
@@ -234,6 +243,18 @@ function render(){
 
 const A={
   refresh:()=>load(),
+  /* Sends Supabase's own recovery email. The link returns to this page, which then asks for a new password. */
+  sendreset:async d=>{const u=S.team.find(x=>x.id===d.id);if(!u||!admin())return;
+    if(!confirm('Email a password reset link to '+u.email+'?\n\nTheir current password keeps working until they choose a new one.'))return;
+    const {error}=await SB.auth.resetPasswordForEmail(u.email,{redirectTo:HERE});
+    if(error){toast(/rate|limit|seconds/i.test(error.message)?'Too many emails were sent just now. Wait a few minutes and try again.':error.message,true);return}
+    toast('Reset link emailed to '+u.email+'.')},
+  forgot:async()=>{const email=($('lgEmail')||{}).value||'',msg=$('lgMsg');
+    if(!/^\S+@\S+\.\S+$/.test(email.trim())){msg.textContent='Type your email above first, then press "Forgot your password?".';return}
+    msg.textContent='Sending…';
+    const {error}=await SB.auth.resetPasswordForEmail(email.trim(),{redirectTo:HERE});
+    msg.textContent=error?(/rate|limit|seconds/i.test(error.message)?'Too many emails were sent just now. Wait a few minutes and try again.':error.message)
+      :'If that email has an account, a reset link is on its way. Open it on this device.'},
   signout:async()=>{await SB.auth.signOut();location.reload()},
   saveacct:async()=>{if(S.acct.busy)return;const name=$('acName').value.trim(),locEl=$('acLoc'),loc=locEl?(locEl.value||null):(S.me.default_location_id||null);
     if(!name){toast('Your name cannot be blank.',true);return}
@@ -269,18 +290,20 @@ document.addEventListener('change',async e=>{const el=e.target;if(!el.dataset.us
   toast(k==='role'?`${u&&u.email?u.email:'Account'} is now ${ROLE_NAME[val]}.`:'Name saved.')});
 document.addEventListener('submit',async e=>{
   if(e.target.id==='pwform'){e.preventDefault();if(S.pw.busy)return;
-    const old=$('pwOld').value,nw=$('pwNew').value,nw2=$('pwNew2').value,fail=m=>{S.pw={busy:false,msg:m,ok:false};render()};
+    const rec=S.recovery,old=rec?'':$('pwOld').value,nw=$('pwNew').value,nw2=$('pwNew2').value,fail=m=>{S.pw={busy:false,msg:m,ok:false};render()};
     if(nw.length<10)return fail('The new password needs at least 10 characters.');
     if(nw!==nw2)return fail('The two new passwords do not match.');
-    if(nw===old)return fail('The new password is the same as the current one.');
+    if(!rec&&nw===old)return fail('The new password is the same as the current one.');
     S.pw={busy:true,msg:'',ok:false};render();
-    /* Prove it is really them at the keyboard before changing it. */
-    const chk=await SB.auth.signInWithPassword({email:S.me.email||S.session.user.email,password:old});
-    if(chk.error)return fail('The current password is not right.');
-    S.session=chk.data.session;
+    if(!rec){
+      /* Prove it is really them at the keyboard before changing it. A reset link has already proved it by email. */
+      const chk=await SB.auth.signInWithPassword({email:S.me.email||S.session.user.email,password:old});
+      if(chk.error)return fail('The current password is not right.');
+      S.session=chk.data.session}
     const up=await SB.auth.updateUser({password:nw});
     if(up.error)return fail(up.error.message);
-    S.pw={busy:false,msg:'Password changed.',ok:true};render();return}
+    S.recovery=false;try{history.replaceState(null,'',HERE)}catch(x){}
+    S.pw={busy:false,msg:rec?'New password set. Use it next time you sign in.':'Password changed.',ok:true};render();return}
   if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
@@ -290,6 +313,7 @@ document.addEventListener('submit',async e=>{
   if(!SB){render();return}
   const {data:{session}}=await SB.auth.getSession();S.session=session;
   SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(RECOVERY_SEEN)S.recovery=true;
   if(session)await whoami();
   render();if(S.session&&allowed())load();
 })();
