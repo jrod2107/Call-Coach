@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#161b22">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
+<title>City Appliance — To book</title>
+<style>
+h1,h2{margin:0}
+h2{font-size:15px}
+.muted{color:var(--muted)} .grow{flex:1}
+.top{display:flex}
+.wrap{max-width:1080px;padding-top:14px;padding-bottom:70px}
+button,.btn{padding:7px 12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;min-height:36px}
+input{padding:9px;width:100%}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 6px}
+.jump a{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;text-decoration:none;color:var(--ink);font-weight:500}
+.jump a b{font-variant-numeric:tabular-nums;margin-right:4px}
+.jump a:hover{border-color:var(--accent-text)}
+.sec{margin-top:22px;scroll-margin-top:70px}
+.sec>header{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px}
+.sec>header p{margin:0;flex-basis:100%}
+.panel{overflow:hidden}
+.item{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;padding:12px 14px;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .main{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:3px}
+.item .name{font-weight:600;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.item .acts{display:flex;flex-wrap:wrap;gap:6px}
+.item .wait{font-size:13px}
+.item .wait.long{color:var(--warn);font-weight:600}
+.empty{padding:16px 14px;color:var(--muted)}
+.pill{background:var(--sunk);color:var(--muted)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:12px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld>span{font-size:12px;color:var(--muted)}
+.notice{background:var(--bad-bg);color:var(--bad);border-radius:var(--r);padding:9px 11px;margin:10px 0}
+@media (max-width:860px){.item .acts{flex-basis:100%}.item .acts .btn{min-height:44px}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<script src="../shell.js" data-base="../" data-page="tobook" data-bar="1"></script>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* To book: the office's list of people waiting on us for a date.
+   It only reads. Three sources, all already limited to office accounts by row-level security:
+     work orders not yet booked, parts that have arrived for a job, and calls saved without a booking.
+   Nothing is kept on the device, and nothing is written from this page. */
+const CFG=window.COACH_CONFIG||{};
+const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LEAD_DAYS=30;
+const today=()=>new Date().toLocaleDateString('en-CA');
+const day=iso=>String(iso||'').slice(0,10);
+const daysSince=iso=>iso?Math.max(0,Math.round((new Date(today()+'T12:00:00')-new Date(day(new Date(iso).toLocaleDateString('en-CA'))+'T12:00:00'))/864e5)):null;
+const daysSinceDate=d=>d?Math.max(0,Math.round((new Date(today()+'T12:00:00')-new Date(day(d)+'T12:00:00'))/864e5)):null;
+const daysUntil=d=>Math.round((new Date(day(d)+'T12:00:00')-new Date(today()+'T12:00:00'))/864e5);
+const fmtDate=d=>d?new Date(day(d)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+const digits=s=>String(s||'').replace(/\D/g,'').replace(/^1(?=\d{10}$)/,'');
+const tel=s=>{const d=digits(s);return d.length===10?'tel:+1'+d:''};
+const cut=(s,n)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s};
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+const waited=(n,verb)=>n==null?'':`<span class="wait ${n>=3?'long':''}">${verb} ${n===0?'today':n===1?'1 day ago':n+' days ago'}</span>`;
+const S={session:null,me:null,wos:[],jobs:[],leads:[],loading:false,loaded:false,err:''};
+const allowed=()=>!!S.me&&['csr','admin'].includes(S.me.role);
+
+async function whoami(){
+  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+}
+async function load(){
+  S.loading=true;render();
+  const since=new Date(Date.now()-LEAD_DAYS*864e5).toISOString();
+  const [w,p,i]=await Promise.all([
+    SB.from('work_orders').select('id,ref,source_name,contact_name,contact_phone,city,appliance,issue,status,approval,received_on,created_at').in('status',['new','contacting']).order('created_at').limit(500),
+    SB.from('parts').select('id,job_number,customer_name,appliance,part_number,description,qty,received_on,return_by,updated_at').eq('status','received').limit(1000),
+    SB.from('intakes').select('id,created_at,csr,outcome,customer,units,note').gte('created_at',since).order('created_at').limit(1000)
+  ]);
+  S.loading=false;S.loaded=true;
+  const bad=[w,p,i].find(r=>r.error);S.err=bad?bad.error.message:'';
+  S.wos=w.data||[];
+  /* One line per job: every part that is in for it, oldest arrival first. */
+  const by=new Map();
+  for(const x of p.data||[]){
+    const nm=(x.customer_name||'').trim().toLowerCase(),k=(x.job_number||'').trim()||(nm?'name:'+nm:'part:'+x.id);
+    const j=by.get(k)||{job_number:(x.job_number||'').trim(),customer_name:x.customer_name||'',appliance:x.appliance||'',parts:[],since:null,return_by:null};
+    j.parts.push(x);
+    const got=x.received_on||day(x.updated_at);
+    if(got&&(!j.since||got<j.since))j.since=got;
+    if(x.return_by&&(!j.return_by||x.return_by<j.return_by))j.return_by=x.return_by;
+    by.set(k,j);
+  }
+  S.jobs=[...by.values()].sort((a,b)=>String(a.since||'').localeCompare(String(b.since||'')));
+  /* A saved lead drops off once a later call from the same phone number was booked as a job. */
+  const all=i.data||[],booked=all.filter(x=>x.outcome==='job');
+  S.leads=all.filter(x=>x.outcome!=='job').filter(x=>{
+    const ph=digits(x.customer&&x.customer.phone);
+    return !(ph&&booked.some(b=>b.created_at>x.created_at&&digits(b.customer&&b.customer.phone)===ph));
+  });
+  render();jump();
+}
+function jump(){const el=location.hash&&document.getElementById(location.hash.slice(1));if(el)el.scrollIntoView()}
+
+function vWo(w){
+  const t=tel(w.contact_phone),n=daysSinceDate(w.received_on||w.created_at);
+  return `<div class="item"><div class="main">
+    <div class="name">${esc(w.contact_name||'No contact name')} ${pill(w.status==='new'?'Not contacted yet':'Trying to reach them',w.status==='new'?'warn':'info')}
+      ${w.approval==='needed'?pill('Approval needed','bad'):w.approval==='requested'?pill('Approval requested','warn'):''}</div>
+    <div>${esc([w.source_name,w.ref?'#'+w.ref:''].filter(Boolean).join(' '))}${w.city?' · '+esc(w.city):''}</div>
+    <div class="muted">${esc([w.appliance,cut(w.issue,140)].filter(Boolean).join(': '))}</div>
+    ${waited(n,'Received')}</div>
+   <div class="acts">${t?`<a class="btn" href="${t}">Call ${esc(w.contact_phone)}</a>`:''}
+    <a class="btn primary" href="../intake/?wo=${encodeURIComponent(w.id)}">Start intake</a>
+    <a class="btn" href="../workorders/">Work orders</a></div></div>`}
+function vJob(j){
+  const n=daysSinceDate(j.since),r=j.return_by?daysUntil(j.return_by):null;
+  return `<div class="item"><div class="main">
+    <div class="name">${esc(j.customer_name||'No customer name')}${j.job_number?` <span class="mono">Job ${esc(j.job_number)}</span>`:''}
+      ${r!=null&&r<=7?pill(r<0?'Return window has closed':r===0?'Return window closes today':'Return window closes in '+r+(r===1?' day':' days'),r<=2?'bad':'warn'):''}</div>
+    ${j.appliance?`<div>${esc(j.appliance)}</div>`:''}
+    <div class="muted">${j.parts.map(x=>esc((x.qty>1?x.qty+' × ':'')+[x.part_number,cut(x.description,60)].filter(Boolean).join(' '))).join('; ')}</div>
+    ${waited(n,'Arrived')}</div>
+   <div class="acts">${j.job_number?`<a class="btn primary" href="../jobs/#find=${encodeURIComponent(j.job_number)}">Find the job</a>`:''}
+    <a class="btn" href="../parts/">Parts desk</a></div></div>`}
+function vLead(x){
+  const c=x.customer||{},t=tel(c.phone),name=[c.first,c.last].filter(Boolean).join(' '),n=daysSince(x.created_at);
+  const apps=Array.isArray(x.units)?x.units.map(u=>u&&u.app).filter(Boolean).join(', '):'';
+  return `<div class="item"><div class="main">
+    <div class="name">${esc(name||'No name taken')} ${pill(x.outcome==='incomplete'?'Call not finished':'Lead, not booked',x.outcome==='incomplete'?'warn':'info')}</div>
+    <div>${esc([apps,c.cityTxt].filter(Boolean).join(' · '))}</div>
+    ${x.note?`<div class="muted">${esc(cut(x.note,160))}</div>`:''}
+    ${waited(n,'Called')}${x.csr?` <span class="muted wait">taken by ${esc(x.csr)}</span>`:''}</div>
+   <div class="acts">${t?`<a class="btn" href="${t}">Call ${esc(c.phone)}</a>`:''}
+    <a class="btn primary" href="../intake/">New intake</a></div></div>`}
+const sec=(id,title,help,rows,empty)=>`<section class="sec" id="${id}"><header><h2>${title}</h2><span class="muted">${rows.length}</span><p class="muted">${help}</p></header>
+  <div class="panel">${rows.length?rows.join(''):`<div class="empty">${S.loaded?empty:'Loading…'}</div>`}</div></section>`;
+function vPage(){
+  return `<header class="top"><h1>To book</h1><span class="muted">Longest wait first</span><span class="grow"></span>
+    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
+  <div class="wrap">
+   ${S.err?`<div class="notice">Some of this list could not be loaded: ${esc(S.err)}</div>`:''}
+   <nav class="jump" aria-label="Sections"><a href="#wo"><b>${S.wos.length}</b>Work orders</a><a href="#parts"><b>${S.jobs.length}</b>Parts in</a><a href="#calls"><b>${S.leads.length}</b>Calls to follow up</a></nav>
+   ${sec('wo','Work orders to contact and book','From warranty companies and property managers. Book each one through the intake guide.',S.wos.map(vWo),'Every work order has been booked.')}
+   ${sec('parts','Parts in, visit to schedule','Parts marked received and not yet installed. Check the job first: the return visit may already be on the schedule.',S.jobs.map(vJob),'No parts are sitting here waiting for a visit.')}
+   ${sec('calls','Calls to follow up',`Calls from the last ${LEAD_DAYS} days saved without a booking. One drops off when a later call from the same number is booked.`,S.leads.map(vLead),'No open leads.')}
+  </div>`;
+}
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
+  <p class="muted">Sign in with your City Appliance email and password.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vNoAccess(){return `<div class="card"><h2>Office accounts only</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}. This list is for the office. Ask Jake if you need it.</p>
+  <a class="btn" href="../home/">Go to Home</a></div>`}
+function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);
+  $('app').innerHTML=!SB?'<div class="card"><h2>To book</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vNoAccess():vPage();
+}
+
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
+  if(el.dataset.a==='refresh')load();
+  if(el.dataset.a==='signout'){await SB.auth.signOut();location.reload()}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(allowed())load()});
+(async function boot(){
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&allowed())load();
+})();
+</script>
+</body>
+</html>
