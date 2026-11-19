@@ -146,7 +146,7 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role,manager').eq('id',S.session.user.id).maybeSingle();
+  const {data}=await SB.from('profiles').select('display_name,email,role,manager,default_location_id').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
 }
 /* The API returns at most 1000 rows per request, so read in pages until a short page comes back. */
@@ -165,7 +165,10 @@ async function load(){
       all('stock_catalog',q=>q.select('*').order('part_number')),
       all('stock_plan',q=>q.select('*').order('part_number').order('location_id')),
       one(SB.from('stock_locations').select('*').order('name'))]);
-    S.items=items;S.hist=hist;S.plan=plan;S.locs=locs;S.cat=Object.fromEntries(cat.map(c=>[c.part_number,c]));S.err='';
+    S.items=items;S.hist=hist;S.plan=plan;S.locs=locs;
+    /* Open on the person's usual truck or location (set under Settings), once per visit. They can switch to All. */
+    if(!S.locInit){S.locInit=true;const d=S.me&&S.me.default_location_id;if(d&&!S.loc&&locs.some(l=>l.id===d&&l.active))S.loc=d}
+    S.cat=Object.fromEntries(cat.map(c=>[c.part_number,c]));S.err='';
   }catch(e){S.err=e.message||String(e)}
   S.loading=false;render();if(S.dlg)renderDlg();
 }

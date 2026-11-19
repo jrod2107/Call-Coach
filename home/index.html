@@ -102,16 +102,12 @@ async function load(){
   const since=new Date(Date.now()-7*864e5).toISOString();
   const jobs=[S.me.role==='stock'?Promise.resolve({data:[]}):SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
   if(office())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
-  if(S.me.role==='admin')jobs.push(SB.from('profiles').select('id,display_name,email,role,manager,senior').order('email'));
   const res=await Promise.all(jobs);
   S.loading=false;
   const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
   S.parts=res[0].data||[];
-  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];
-    const o=!mgr()?{data:[]}:await SB.from('intake_other_issues').select('appliance,brand,issue,taken_by,created_at').gte('created_at',new Date(Date.now()-90*864e5).toISOString()).order('created_at',{ascending:false}).limit(500);S.others=o.data||[];
-    const ob=!mgr()?{data:[]}:await SB.from('intake_other_brands').select('brand,appliance,created_at').gte('created_at',new Date(Date.now()-90*864e5).toISOString()).limit(1000);S.otherBrands=ob.data||[]}
+  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];}
   S.intakes=office()&&res[1]?res[1].data||[]:[];
-  S.team=S.me.role==='admin'&&res[2]?res[2].data||[]:[];
   render();
 }
 
@@ -141,45 +137,17 @@ function vAttention(){
     ${stat(n(p=>mine(p)&&p.status==='need_to_order'),'Your requests waiting to be ordered','warn','../parts/')}
     ${stat(n(p=>mine(p)&&['ordered','backordered','shipped'].includes(p.status)),'Your requests on the way','','../parts/')}</div>`;
 }
-/* Issues the office typed in under "Other" on Call intake, grouped by appliance. Three or more for one appliance
-   in 90 days is flagged, as a sign the issue list for that appliance is missing something. */
-function vOthers(){
-  if(!mgr()||!(S.others||[]).length)return'';
-  const by={};S.others.forEach(o=>{(by[o.appliance]=by[o.appliance]||[]).push(o)});
-  const rows=Object.entries(by).sort((a,b)=>b[1].length-a[1].length);
-  return `<h3>Issues typed in under "Other" on Call intake, last 90 days</h3><div class="panel"><table><thead><tr><th>Appliance</th><th>Times</th><th>What was typed</th></tr></thead><tbody>
-   ${rows.map(([app,list])=>`<tr><td>${esc(app)}</td><td><b>${list.length}</b>${list.length>=3?' <span class="muted">· add to the list?</span>':''}</td>
-     <td>${list.slice(0,8).map(o=>`${esc(o.issue)} <span class="muted">(${esc([o.brand,o.taken_by,String(o.created_at).slice(5,10)].filter(Boolean).join(', '))})</span>`).join('<br>')}${list.length>8?`<br><span class="muted">and ${list.length-8} more</span>`:''}</td></tr>`).join('')}</tbody></table></div>
-   <p class="muted" style="margin-top:8px">When the same issue keeps coming up for an appliance, ask for it to be added to that appliance's list for good.</p>`;
-}
-/* Brands typed in under "Other" on Call intake. One that keeps coming up should become its own button. */
-function vOtherBrands(){
-  if(!mgr()||!(S.otherBrands||[]).length)return'';
-  const by={};S.otherBrands.forEach(o=>{const k=String(o.brand).trim().toLowerCase();(by[k]=by[k]||{name:String(o.brand).trim(),n:0,apps:{}});by[k].n++;if(o.appliance)by[k].apps[o.appliance]=1});
-  const rows=Object.values(by).sort((a,b)=>b.n-a.n);
-  return `<h3>Brands typed in under "Other" on Call intake, last 90 days</h3><div class="panel"><table><thead><tr><th>Brand</th><th>Times</th><th>Appliances</th></tr></thead><tbody>
-   ${rows.slice(0,25).map(r=>`<tr><td>${esc(r.name)}</td><td><b>${r.n}</b>${r.n>=3?' <span class="muted">· make it a button?</span>':''}</td><td>${esc(Object.keys(r.apps).join(', '))}</td></tr>`).join('')}</tbody></table></div>
-   <p class="muted" style="margin-top:8px">When a brand keeps coming up, ask for it to be added to the main brand buttons.</p>`;
-}
-function vTeam(){
-  if(S.me.role!=='admin')return'';
-  return `<h3>Team and access</h3><div class="panel"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody>
-   ${S.team.map(u=>`<tr><td><input data-user="${u.id}" data-k="display_name" value="${esc(u.display_name)}" placeholder="Name shown to the team" aria-label="Name for ${esc(u.email)}"></td><td>${esc(u.email)}</td>
-     <td>${u.id===S.me.id?esc(ROLE_NAME[roleKey(u)])+' <span class="muted">(you)</span>':`<select data-user="${u.id}" data-k="role" aria-label="Role for ${esc(u.email)}">${ROLES.map(r=>`<option value="${r}" ${roleKey(u)===r?'selected':''}>${ROLE_NAME[r]}</option>`).join('')}</select>`}</td></tr>`).join('')}</tbody></table></div>
-   <p class="muted" style="margin-top:8px">New accounts are created in the Supabase dashboard and start as "Waiting for access". Set the role here to let someone in.</p>`;
-}
+/* Team and access, the intake "Other" lists and the rest of the company settings live on the Settings page. */
 function vHome(){
   const first=(S.me.display_name||'').split(' ')[0];
   return `<header class="top"><h1>City Appliance</h1>
     <nav class="tools" aria-label="Tools">${TOOLS.filter(t=>t.roles.includes(S.me.role)).map(t=>`<a href="${t.href}" title="${t.desc}">${t.name}</a>`).join('')}</nav><span class="grow"></span>
     <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button>
-    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[roleKey(S.me)]||S.me.role)}</span><button data-a="signout">Sign out</button></header>
+    <span class="who">${esc(S.me.display_name||S.me.email||'')} · ${esc(ROLE_NAME[roleKey(S.me)]||S.me.role)}</span><a href="../settings/" style="color:#fff;font-weight:600;text-decoration:none;padding:6px 11px;border-radius:var(--r);background:rgba(255,255,255,.14)">Settings</a><button data-a="signout">Sign out</button></header>
   <div class="wrap"><h2>${first?'Hi, '+esc(first):'Home'}</h2><p class="muted">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
    ${S.err?`<div class="notice">Some numbers could not be loaded: ${esc(S.err)}</div>`:''}
    ${vAttention()}
-   ${vOthers()}
-   ${vOtherBrands()}
-   ${vTeam()}</div>`;
+</div>`;
 }
 function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
   <p class="muted">Sign in with the same email and password you use for Call Desk.</p>
@@ -197,12 +165,6 @@ function render(){
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
   if(el.dataset.a==='refresh')load();
   if(el.dataset.a==='signout'){await SB.auth.signOut();location.reload()}});
-document.addEventListener('change',async e=>{const el=e.target;if(!el.dataset.user)return;
-  const k=el.dataset.k,val=el.value.trim(),u=S.team.find(x=>x.id===el.dataset.user);
-  const patch=k==='role'?(val==='manager'?{role:'csr',manager:true,senior:false}:val==='senior'?{role:'tech',manager:false,senior:true}:{role:val,manager:false,senior:false}):{[k]:val};
-  const {error}=await SB.from('profiles').update(patch).eq('id',el.dataset.user);
-  if(error){toast(error.message,true);if(u)el.value=(k==='role'?roleKey(u):u[k])||'';return}
-  if(u)Object.assign(u,patch);toast(k==='role'?`${u&&u.email?u.email:'Account'} is now ${ROLE_NAME[val]}.`:'Name saved.')});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
