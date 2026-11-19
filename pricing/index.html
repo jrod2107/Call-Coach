@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="manifest" href="../manifest.webmanifest">
-<meta name="theme-color" content="#1e40af">
+<meta name="theme-color" content="#161b22">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
 <link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
@@ -79,8 +79,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 #toast.bad{background:var(--bad);color:#fff}
 @media (max-width:640px){ input,select{font-size:16px} .wrap{padding:10px 10px 80px} .part{grid-template-columns:1fr} .part .nums{grid-template-columns:1fr 1fr} td,th{padding:8px 6px} }
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
 </head>
 <body>
+<script src="../shell.js" data-base="../" data-page="pricing" data-bar="1"></script>
 <div id="app"></div>
 <dialog id="dlg"></dialog>
 <div id="toast" role="status" hidden></div>
@@ -235,9 +239,8 @@ function vTotals(){
 
 function vMain(){
   const m=curModel(),tiers=modelTiers(),q=S.q;
-  return `<div class="top"><a href="../home/">← Home</a><h1 class="grow">Job pricing</h1>
-      <span class="who">${esc(S.me.display_name||S.me.email||'')}</span>
-      ${isAdmin()?'<button data-a="prices">Prices</button>':''}<button data-a="signout">Sign out</button></div>
+  return `<div class="top"><h1 class="grow">Job pricing</h1>
+      ${isAdmin()?'<button data-a="prices">Prices</button>':''}</div>
   <div class="wrap">
     ${S.err?`<div class="notice bad">Could not load prices: ${esc(S.err)}</div>`:''}
     <div class="panel pad"><h3>1. Appliance class</h3>
@@ -349,6 +352,7 @@ $('dlg').addEventListener('close',()=>{S.dlg=null});
 
 function renderDlg(){const d=$('dlg');if(S.dlg==='prices'){d.innerHTML=dPrices();if(!d.open)d.showModal()}}
 function render(){
+  if(window.AppShell)AppShell.set(S.session?S.me:null);   /* the shared menu shows what this role can open */
   const a=document.activeElement,fk=a&&a.dataset&&a.dataset.k,pos=a&&a.selectionStart;
   $('app').innerHTML=!SB?'<div class="card"><h2>Job pricing</h2><p>This page is missing its configuration (config.js).</p></div>'
     :!S.session?vLogin():!S.me||!allowed()?(S.me?vWaiting():''):vMain();

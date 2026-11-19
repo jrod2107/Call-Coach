@@ -22,6 +22,7 @@
     {k:'tobook',label:'To book',href:'tobook/',roles:['admin','csr'],icon:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>'},
     {k:'jobs',label:'Jobs',href:'jobs/',roles:['admin','csr','tech'],icon:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'},
     {k:'workorders',label:'Work orders',href:'workorders/',roles:['admin','csr'],icon:'<path d="M7 3h10v18H7z"/><path d="M10 8h4M10 12h4M10 16h2"/>'},
+    {k:'pricing',label:'Job pricing',href:'pricing/',roles:['admin','csr','tech'],icon:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h4M8 16h2M12 16h4"/>'},
     {k:'parts',label:'Parts desk',href:'parts/',roles:['admin','csr','tech'],group:'Parts',icon:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'},
     {k:'stock',label:'Stock',href:'stock/',roles:['admin','csr','tech','stock'],icon:'<path d="M4 4v16M20 4v16M4 10h16M4 16h16"/><rect x="7" y="6" width="4" height="4"/><rect x="13" y="12" width="4" height="4"/>'}
   ];
