@@ -398,7 +398,7 @@ const A={
       if(j.configured===false)m.msg='The mailbox connection is not set up yet, so nothing was checked.';
       else if(j.error)m.msg='The mailbox could not be checked: '+j.error;
       else{const t=j.tally||{};m.msg=`Checked the mailbox. New to review: ${t.draft||0}. Already here: ${t.duplicate||0}. Follow-ups added as notes: ${t.update||0}. Other emails skipped: ${t.ignored||0}.`
-        +(t.error?` Could not be read: ${t.error}.`:'')+(j.more?' There is more mail to go through. Press the button again in a minute.':'')}
+        +(t.error?` Could not be read: ${t.error}.`:'')+((j.problems||[]).length?` ${j.problems.length} of ${j.inboxes} inboxes could not be opened: ${j.problems.map(p=>p.split(':')[0]).join(', ')}.`:'')+(j.more?' There is more mail to go through. Press the button again in a minute.':'')}
     }catch(e){m.msg='The mailbox could not be checked: '+e.message}
     m.busy=false;await load()},
   cancel:async(d,el)=>{if(el.dataset.armed!=='1'){const was=el.textContent;el.dataset.armed='1';el.textContent='Click again to cancel it';el.style.color='var(--bad)';

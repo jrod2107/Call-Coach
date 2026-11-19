@@ -14,6 +14,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // Secrets:
 //   MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET   the Microsoft 365 app registration (read access to one mailbox)
 //   MS_MAILBOX                                     the mailbox address; several can be listed with commas
+// The list of inboxes can also be kept in collector_config "mailboxes" (commas), which wins over MS_MAILBOX. That
+// list is not a secret. Each inbox must also be inside the app's Exchange scope, or Microsoft refuses it.
+// One inbox failing (not in scope, removed) does not stop the others; it is reported as a problem.
 // Until those are set the function answers {configured:false} and does nothing.
 
 const cors = {
@@ -121,6 +124,11 @@ async function ingest(m: Mail, token: string): Promise<Outcome> {
   const name = clean(d.source_name, 120) || sender || "Unknown sender";
   const existing = ref ? await findWorkOrder(ref, name, domain) : null;
   if (existing) {
+    // The same work order sent to several inboxes at once is one arrival, not a repeat: no note for those.
+    const got = await db(`work_order_mail?work_order_id=eq.${enc(String(existing.id))}&mailbox=neq.${enc(m.mailbox)}&select=received_at`);
+    const at = new Date(m.receivedAt).getTime();
+    const sameSend = got.some((g) => Math.abs(new Date(String(g.received_at)).getTime() - at) < 30 * 60_000);
+    if (sameSend) return { outcome: "duplicate", detail: "Same work order, sent to another inbox as well", work_order_id: String(existing.id), ref: String(existing.ref) };
     await addNote(existing.id, `The same work order arrived by email again from ${sender}. Nothing was changed.`);
     return { outcome: "duplicate", work_order_id: String(existing.id), ref: String(existing.ref) };
   }
@@ -235,13 +243,15 @@ Deno.serve(async (req: Request) => {
   }
 
   const tenant = Deno.env.get("MS_TENANT_ID"), client = Deno.env.get("MS_CLIENT_ID"), secret = Deno.env.get("MS_CLIENT_SECRET");
-  const boxes = (Deno.env.get("MS_MAILBOX") || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const boxes = (cfg.mailboxes || Deno.env.get("MS_MAILBOX") || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   if (!tenant || !client || !secret || !boxes.length) return json({ configured: false, message: "The mailbox connection is not set up yet." });
 
   try {
     const token = await graphToken(tenant, client, secret);
     let read = 0, seen = 0, more = false;
+    const problems: string[] = [];
     for (const box of boxes) {
+     try {
       const wmKey = `watermark:${box}`;
       const since = cfg[wmKey] || cfg.start_at || new Date().toISOString();
       const list = await graph(token, `users/${enc(box)}/messages?$select=id,internetMessageId,from,subject,receivedDateTime,hasAttachments,isDraft` +
@@ -278,9 +288,13 @@ Deno.serve(async (req: Request) => {
       }
       if (wm !== since) await setConfig(wmKey, wm);
       if (!stopped && msgs.length === 50) more = true;
+     } catch (e) {
+      console.error("mailbox", box, (e as Error).message);
+      problems.push(`${box}: ${(e as Error).message.slice(0, 160)}`);
+     }
     }
-    await setConfig("last_run", JSON.stringify({ at: new Date().toISOString(), ok: true }));
-    return json({ configured: true, looked_at: seen, read, tally, more });
+    await setConfig("last_run", JSON.stringify({ at: new Date().toISOString(), ok: !problems.length, inboxes: boxes.length, problems }));
+    return json({ configured: true, looked_at: seen, read, tally, more, inboxes: boxes.length, problems });
   } catch (e) {
     console.error("collect", (e as Error).message);
     await setConfig("last_run", JSON.stringify({ at: new Date().toISOString(), ok: false, error: (e as Error).message.slice(0, 300) })).catch(() => {});
