@@ -141,7 +141,7 @@ const TABS=[
   ['closed','Cancelled',w=>w.status==='cancelled']];
 const BLANK={source_kind:'property_manager',source_name:'',source_ref:'',received_via:'email',received_on:'',portal_note:'',contact_name:'',contact_phone:'',contact_phone2:'',contact_email:'',
   street:'',unit:'',city:'',zip:'',appliance:'',issue:'',original_text:'',nte:'',notes:'',approval:'not_needed',approval_amount:'',invoice_number:'',invoice_amount:'',invoice_sent_on:'',paid_on:'',portal_updated:false,hcp_job_number:''};
-const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null},mail:{errs:[],busy:false,msg:''},procs:[],procEdit:null,hj:{q:'',busy:false,msg:'',custs:null,jobs:null}};
+const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null},mail:{errs:[],busy:false,msg:''},procs:[],procEdit:null,hj:{q:'',busy:false,msg:'',custs:null,jobs:null,pick:null,ack:false}};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const wo=id=>S.rows.find(w=>w.id===id);
 const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
@@ -189,7 +189,7 @@ async function hcp(action,payload){
 }
 async function upd(id,patch,msg){
   const {error}=await SB.from('work_orders').update(patch).eq('id',id);
-  if(error){toast(/Only an admin can link/.test(error.message)?'Only an admin can link a work order to a job that was already booked.':/booked_needs_intake/.test(error.message)?'A work order can only be booked or closed after its intake is linked.':error.message,true);return false}
+  if(error){toast(/can link a work order to an existing job/.test(error.message)?'Only office accounts can link a work order to a job that was already booked.':/booked_needs_intake/.test(error.message)?'A work order can only be booked or closed after its intake is linked.':error.message,true);return false}
   if(msg)toast(msg);await load();return true;
 }
 
@@ -292,15 +292,25 @@ function bookSection(w){
     <p style="margin:6px 0">Contact them, then take the call through the intake guide. It opens with the name, phone and address from this work order already filled in, and saving it as a job marks this work order booked.</p>
     <p style="margin:6px 0"><a class="btn primary" href="../intake/?wo=${w.id}" target="_blank" rel="noopener" style="text-decoration:none;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)">Start the intake for this work order</a></p>
     <h3 style="margin-top:14px">Intake already done?</h3>
-    <p class="muted" style="margin:6px 0">If someone already took this call through the intake guide, pick that intake below to link it. This work order cannot be marked booked any other way.</p>
+    <p class="muted" style="margin:6px 0">If someone already took this call through the intake guide, pick that intake below to link it.</p>
     <div class="row" style="margin:8px 0"><input data-f="hcp_job_number" value="${esc(S.edit.hcp_job_number)}" class="mono" placeholder="Housecall Pro job number" aria-label="Housecall Pro job number" style="width:210px"><span class="muted">optional, but it helps later</span></div>
     ${list.length?`<div class="hits">${list.slice(0,8).map(i=>{const m=intakeMatches(i,w),u=(i.units||[])[0]||{};return `<button class="hit" data-a="link" data-id="${w.id}" data-intake="${i.id}">${m?pill('Looks like a match','good')+' ':''}<b>${esc(intakeName(i))}</b> · ${esc(u.app||'')} · ${fmtWhen(i.created_at)}${i.csr?' · taken by '+esc(i.csr):''}</button>`}).join('')}</div>`
       :'<p class="muted" style="margin:6px 0">No unlinked intakes saved as jobs in the last 10 days.</p>'}
-    ${S.me.role==='admin'?existingJob(w):''}</div>`;
+    ${existingJob(w)}</div>`;
 }
-/* Admin only: the job was already booked in Housecall Pro before this work order arrived. Find it and link it, no intake.
-   The database refuses this for anyone but an admin (work_orders_guard_no_intake). */
+/* Office accounts: the job was already booked in Housecall Pro before this work order arrived. Find it and link it, no intake.
+   They must tick an acknowledgement first. The database refuses this for non-office accounts (work_orders_guard_no_intake). */
 function existingJob(w){const h=S.hj,when=j=>{const t=j.schedule&&j.schedule.scheduled_start;return t?fmtWhen(t):'not scheduled'};
+  if(h.pick){const j=h.pick;return `<h3 style="margin-top:14px">Already booked in Housecall Pro?</h3>
+    <div class="notice" style="margin-top:8px"><b>Confirm: link ${esc(w.ref)} to job #${esc(j.invoice_number||'')}</b>
+     <div style="margin-top:4px">${esc(String(j.description||'No description').slice(0,120))} · ${esc(when(j))}${j.work_status?' · '+esc(String(j.work_status)):''}</div>
+     <label class="row" style="margin-top:10px;align-items:flex-start;gap:8px;flex-wrap:nowrap"><input type="checkbox" id="hjack" data-hjack="1" ${h.ack?'checked':''} style="width:auto;margin-top:3px">
+      <span>I understand that work orders are booked through the intake guide so nothing is missed. This job was already booked in Housecall Pro before this work order arrived, so no intake is needed for it.</span></label>
+     <div class="row" style="margin-top:10px"><button class="primary" data-a="hjlink" data-id="${w.id}" ${h.ack?'':'disabled style="opacity:.4;cursor:not-allowed"'}>${S.busy?'Linking…':'Link to job #'+esc(j.invoice_number||'')}</button>
+      <button data-a="hjback">Pick a different job</button><span class="grow"></span>
+      <a class="btn" href="../intake/?wo=${w.id}" target="_blank" rel="noopener" style="text-decoration:none">Not booked yet: start the intake</a></div></div>`}
+  return existingJobSearch(w)}
+function existingJobSearch(w){const h=S.hj,when=j=>{const t=j.schedule&&j.schedule.scheduled_start;return t?fmtWhen(t):'not scheduled'};
   return `<h3 style="margin-top:14px">Already booked in Housecall Pro?</h3>
     <p class="muted" style="margin:6px 0">If this job was on the schedule before the work order arrived, find it and link it. Use this only for jobs that are already booked: new ones go through the intake guide.</p>
     <div class="row" style="margin:8px 0"><input id="hjq" value="${esc(h.q||w.contact_name||'')}" placeholder="Customer name, phone or address" aria-label="Search Housecall Pro" style="flex:1;min-width:200px">
@@ -365,7 +375,7 @@ function renderDlg(){const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
   const open=d.querySelector('details'),wasOpen=open&&open.open,top=d.scrollTop;
   d.innerHTML=dWo();if(wasOpen){const n=d.querySelector('details');if(n)n.open=true}
   if(!d.open)d.showModal();d.scrollTop=top}
-function closeDlg(){S.dlg=null;S.edit=null;S.procEdit=null;S.hj={q:'',busy:false,msg:'',custs:null,jobs:null};S.events=[];S.files=[];S.evnote='';const d=$('dlg');if(d.open)d.close()}
+function closeDlg(){S.dlg=null;S.edit=null;S.procEdit=null;S.hj={q:'',busy:false,msg:'',custs:null,jobs:null,pick:null,ack:false};S.events=[];S.files=[];S.evnote='';const d=$('dlg');if(d.open)d.close()}
 const cleaned=()=>{const E=S.edit,t=k=>String(E[k]==null?'':E[k]).trim()||null;
   return {source_kind:E.source_kind,source_name:String(E.source_name||'').trim(),source_ref:t('source_ref'),received_via:E.received_via,received_on:E.received_on||today(),portal_note:t('portal_note'),
     contact_name:String(E.contact_name||'').trim(),contact_phone:t('contact_phone'),contact_phone2:t('contact_phone2'),contact_email:t('contact_email'),street:t('street'),unit:t('unit'),city:t('city'),zip:t('zip'),
@@ -439,10 +449,14 @@ const A={
   hjcust:async d=>{const h=S.hj,c=h.custs[+d.i];if(!c)return;h.msg='Loading jobs…';renderDlg();
     try{const res=await hcp('customer_jobs',{customer_id:c.id});h.jobs=(res&&res.jobs)||[];h.msg=h.jobs.length?'Pick the job this work order is for.':''}catch(e){h.msg='Could not load jobs: '+e.message}
     renderDlg()},
-  hjjob:async(d,el)=>{const j=S.hj.jobs[+d.i],num=j&&String(j.invoice_number||'').trim();if(!num){toast('That job has no job number.',true);return}
-    if(el.dataset.armed!=='1'){el.dataset.armed='1';el.innerHTML='<b>Click again to link this work order to job #'+esc(num)+'</b>';return}
-    if(await upd(d.id,{status:'booked',hcp_job_number:num,booked_no_intake_by:S.me.display_name||S.me.email||'Admin'},'Linked to job #'+num+'. The work order is under Booked.')){
-      S.hj={q:'',busy:false,msg:'',custs:null,jobs:null};S.edit.hcp_job_number=num;S.tab='booked';render();loadDetail(d.id)}},
+  hjjob:d=>{const j=S.hj.jobs[+d.i],num=j&&String(j.invoice_number||'').trim();if(!num){toast('That job has no job number.',true);return}
+    S.hj.pick=j;S.hj.ack=false;renderDlg()},
+  hjback:()=>{S.hj.pick=null;S.hj.ack=false;renderDlg()},
+  hjlink:async d=>{const j=S.hj.pick,num=j&&String(j.invoice_number||'').trim();if(!num||S.busy)return;
+    if(!S.hj.ack){toast('Tick the box to confirm first.',true);return}
+    S.busy=true;renderDlg();const ok=await upd(d.id,{status:'booked',hcp_job_number:num,booked_no_intake_by:S.me.display_name||S.me.email||'Admin'},'Linked to job #'+num+'. The work order is under Booked.');S.busy=false;
+    if(ok){
+      S.hj={q:'',busy:false,msg:'',custs:null,jobs:null,pick:null,ack:false};S.edit.hcp_job_number=num;S.tab='booked';render();loadDetail(d.id)}else renderDlg()},
   procedit:()=>{const w=S.dlg&&S.dlg.id?wo(S.dlg.id):null;if(!w||S.me.role!=='admin')return;const p=procFor(w.source_name);
     S.procEdit=p?{id:p.id,name:p.name,process:p.process}:{id:null,name:String(w.source_name||'').trim(),process:''};renderDlg()},
   proccancel:()=>{S.procEdit=null;renderDlg()},
@@ -494,6 +508,7 @@ document.addEventListener('input',e=>{const el=e.target;
   if(el.dataset.ev)S.evnote=el.value});
 document.addEventListener('change',e=>{const el=e.target;
   if(el.dataset.fc&&S.edit)S.edit[el.dataset.fc]=el.checked;
+  if(el.dataset.hjack){S.hj.ack=el.checked;renderDlg()}
   if(el.id==='impfile'){const f=el.files[0];if(f&&f.size>10*1024*1024){toast('That file is over 10 MB.',true);el.value='';return}S.imp.file=f||null;renderDlg()}
   if(el.id==='upfile')upload(el)});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
