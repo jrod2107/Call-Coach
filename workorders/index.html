@@ -138,7 +138,7 @@ const TABS=[
   ['closed','Cancelled',w=>w.status==='cancelled']];
 const BLANK={source_kind:'property_manager',source_name:'',source_ref:'',received_via:'email',received_on:'',portal_note:'',contact_name:'',contact_phone:'',contact_phone2:'',contact_email:'',
   street:'',unit:'',city:'',zip:'',appliance:'',issue:'',original_text:'',nte:'',notes:'',approval:'not_needed',approval_amount:'',invoice_number:'',invoice_amount:'',invoice_sent_on:'',paid_on:'',portal_updated:false,hcp_job_number:''};
-const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null},mail:{errs:[],busy:false,msg:''}};
+const S={session:null,me:null,rows:[],last:{},intakes:[],tab:'tobook',q:'',loading:false,err:'',dlg:null,edit:null,events:[],files:[],evnote:'',busy:false,imp:{busy:false,msg:'',tone:'',file:null},mail:{errs:[],busy:false,msg:''},procs:[],procEdit:null};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const wo=id=>S.rows.find(w=>w.id===id);
 const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
@@ -163,6 +163,8 @@ async function load(){
   S.loading=false;
   const me=await SB.from('work_order_mail').select('subject,received_at').eq('outcome','error').gte('attempts',3).gte('created_at',new Date(Date.now()-7*864e5).toISOString()).order('received_at');
   S.mail.errs=me.error?[]:(me.data||[]);
+  const pr=await SB.from('work_order_source_processes').select('id,name,process').order('name');
+  S.procs=pr.error?[]:(pr.data||[]);
   const bad=[w,e,i].find(r=>r.error);
   if(bad)S.err=bad.error.message;else{S.err='';S.rows=w.data||[];S.intakes=i.data||[];S.last={};for(const ev of (e.data||[]))if(!S.last[ev.work_order_id])S.last[ev.work_order_id]=ev}
   render();if(S.dlg&&S.dlg.type==='wo'&&S.dlg.id)renderDlg();
@@ -282,6 +284,19 @@ function bookSection(w){
     ${list.length?`<div class="hits">${list.slice(0,8).map(i=>{const m=intakeMatches(i,w),u=(i.units||[])[0]||{};return `<button class="hit" data-a="link" data-id="${w.id}" data-intake="${i.id}">${m?pill('Looks like a match','good')+' ':''}<b>${esc(intakeName(i))}</b> · ${esc(u.app||'')} · ${fmtWhen(i.created_at)}${i.csr?' · taken by '+esc(i.csr):''}</button>`}).join('')}</div>`
       :'<p class="muted" style="margin:6px 0">No unlinked intakes saved as jobs in the last 10 days.</p>'}</div>`;
 }
+/* The approval process for the company on a work order (work_order_source_processes). A row applies when the company
+   name contains the row's name. Office sees it; an admin can add or change it here. */
+function procFor(name){const n=String(name||'').toLowerCase();if(!n)return null;
+  return S.procs.filter(p=>n.includes(String(p.name).toLowerCase())).sort((a,b)=>b.name.length-a.name.length)[0]||null}
+function procBox(name){const p=procFor(name),ed=S.procEdit,admin=S.me.role==='admin';
+  if(ed)return `<div class="notice info"><b>Approval process</b>
+    <div class="fields" style="margin-top:6px"><label class="fld"><span>Applies to companies whose name contains</span><input id="procName" value="${esc(ed.name)}"></label>
+    <label class="fld wide"><span>Who to call or what to do to get approval</span><textarea id="procText" rows="3">${esc(ed.process)}</textarea></label></div>
+    <div class="row" style="margin-top:8px"><button class="small primary" data-a="procsave">Save</button><button class="small" data-a="proccancel">Cancel</button>
+    ${ed.id?'<span class="grow"></span><button class="small ghost" data-a="procdel">Remove</button>':''}</div></div>`;
+  if(p)return `<div class="notice info"><div class="row"><b>Approval process for ${esc(p.name)}</b><span class="grow"></span>${admin?'<button class="small" data-a="procedit">Edit</button>':''}</div>
+    <div style="margin-top:4px;white-space:pre-wrap">${esc(p.process)}</div></div>`;
+  return admin&&String(name||'').trim()?`<div class="row"><span class="muted">No approval process is saved for this company.</span><button class="small" data-a="procedit">Add one</button></div>`:''}
 function dWo(){
   const w=S.dlg.id?wo(S.dlg.id):null,E=S.edit;
   if(!w)return `<div class="dhead"><h2>New work order</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
@@ -290,6 +305,7 @@ function dWo(){
   if(w.status==='draft')return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span>${pill('Needs review','warn')}<span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody">
    <div class="notice info">This arrived by email and was filled in automatically. Compare it with the original below, fix anything that is wrong or missing, then confirm it. Once confirmed it is a lead under To book.</div>
+   ${procBox(w.source_name)}
    ${basics(true)}
    <div><h3>Original</h3>
     ${S.files.length?`<ul class="hist" style="margin-top:6px">${S.files.map(f=>`<li><button class="small" data-a="file" data-path="${esc(f.path)}">${esc(f.name)}</button> <span class="muted">attached to the email</span></li>`).join('')}</ul>`:''}
@@ -300,6 +316,7 @@ function dWo(){
   return `<div class="dhead"><h2 class="mono">${esc(w.ref)}</h2><span>${esc(w.source_name)}</span><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody">
    <div>${stageCell(w)}</div>
+   ${procBox(w.source_name)}
    ${w.status!=='cancelled'?`<div><h3>Contact log</h3>
     <div class="row" style="margin-top:6px"><input id="evnote" data-ev="1" value="${esc(S.evnote)}" placeholder="Optional note, e.g. tenant will call back after 3" style="flex:1;min-width:180px" aria-label="Contact note">
      ${['call','voicemail','text','email','note'].map(k=>`<button class="small" data-a="log" data-k="${k}" data-id="${w.id}">${EV[k]}</button>`).join('')}</div>
@@ -324,7 +341,7 @@ function renderDlg(){const d=$('dlg');if(!S.dlg){if(d.open)d.close();return}
   const open=d.querySelector('details'),wasOpen=open&&open.open,top=d.scrollTop;
   d.innerHTML=dWo();if(wasOpen){const n=d.querySelector('details');if(n)n.open=true}
   if(!d.open)d.showModal();d.scrollTop=top}
-function closeDlg(){S.dlg=null;S.edit=null;S.events=[];S.files=[];S.evnote='';const d=$('dlg');if(d.open)d.close()}
+function closeDlg(){S.dlg=null;S.edit=null;S.procEdit=null;S.events=[];S.files=[];S.evnote='';const d=$('dlg');if(d.open)d.close()}
 const cleaned=()=>{const E=S.edit,t=k=>String(E[k]==null?'':E[k]).trim()||null;
   return {source_kind:E.source_kind,source_name:String(E.source_name||'').trim(),source_ref:t('source_ref'),received_via:E.received_via,received_on:E.received_on||today(),portal_note:t('portal_note'),
     contact_name:String(E.contact_name||'').trim(),contact_phone:t('contact_phone'),contact_phone2:t('contact_phone2'),contact_email:t('contact_email'),street:t('street'),unit:t('unit'),city:t('city'),zip:t('zip'),
@@ -391,6 +408,19 @@ const A={
     if(!row.source_name){toast('The company that sent it cannot be blank.',true);return}
     if(!row.contact_name&&!row.contact_phone){toast('Add the name or phone of the person to contact.',true);return}
     row.status='new';S.busy=true;renderDlg();const ok=await upd(d.id,row,'Confirmed. It is now under To book.');S.busy=false;if(ok){closeDlg();S.tab='tobook';render()}else renderDlg()},
+  procedit:()=>{const w=S.dlg&&S.dlg.id?wo(S.dlg.id):null;if(!w||S.me.role!=='admin')return;const p=procFor(w.source_name);
+    S.procEdit=p?{id:p.id,name:p.name,process:p.process}:{id:null,name:String(w.source_name||'').trim(),process:''};renderDlg()},
+  proccancel:()=>{S.procEdit=null;renderDlg()},
+  procsave:async()=>{const ed=S.procEdit;if(!ed)return;const name=$('procName').value.trim(),process=$('procText').value.trim();
+    if(name.length<2||!process){toast('Fill in the company name and the process.',true);return}
+    const row={name,process,updated_at:new Date().toISOString(),updated_by_name:S.me.display_name||S.me.email||null};
+    const r=ed.id?await SB.from('work_order_source_processes').update(row).eq('id',ed.id).select('id'):await SB.from('work_order_source_processes').insert(row).select('id');
+    if(r.error||!(r.data||[]).length){toast('The approval process could not be saved'+(r.error?': '+r.error.message:'.'),true);return}
+    S.procEdit=null;toast('Approval process saved.');await load()},
+  procdel:async(d,el)=>{const ed=S.procEdit;if(!ed||!ed.id)return;if(el.dataset.armed!=='1'){el.dataset.armed='1';el.textContent='Click again to remove it';return}
+    const r=await SB.from('work_order_source_processes').delete().eq('id',ed.id).select('id');
+    if(r.error||!(r.data||[]).length){toast('It could not be removed'+(r.error?': '+r.error.message:'.'),true);return}
+    S.procEdit=null;toast('Approval process removed.');await load()},
   checkmail:async()=>{const m=S.mail;if(m.busy)return;m.busy=true;m.msg='';render();
     try{const r=await fetch(CFG.supabaseUrl+'/functions/v1/work-order-collect',{method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:'{}'});

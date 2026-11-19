@@ -886,12 +886,13 @@ function woBanner(html){ let b=$("woBanner"); if(!b){ b=document.createElement("
 function woShow(){ const w=S.wo; if(!w){ woBanner(""); return; }
   woBanner("<b>Work order "+esc(w.ref)+"</b> from "+esc(w.source)+(w.source_ref?" ("+esc(w.source_ref)+")":"")+(w.appliance?" · "+esc(w.appliance):"")+(w.nte!=null?" · do not exceed $"+esc(w.nte):"")
     +(w.issue?"<div style=\"margin-top:4px\">Reported: "+esc(w.issue)+"</div>":"")
+    +(w.process?"<div style=\"margin-top:4px\"><b>Approval process for "+esc(w.source)+":</b> "+esc(w.process)+"</div>":"")
     +"<div style=\"margin-top:4px;font-size:12px\">Name, phone and address are filled in from the work order. Confirm them with the customer and go through every question. Saving this as a job marks the work order booked.</div>"); }
 function woApply(w){
   S=blank(); const nm=String(w.contact_name||"").trim().split(/\s+/).filter(Boolean);
   S.cust={first:nm.length>1?nm.slice(0,-1).join(" "):(nm[0]||""),last:nm.length>1?nm[nm.length-1]:"",phone:fmtPhone(w.contact_phone||""),email:w.contact_email||"",
     street:[w.street,w.unit].filter(Boolean).join(" "),cityTxt:w.city||"",zip:w.zip||""};
-  S.wo={id:w.id,ref:w.ref,source:w.source_name,source_ref:w.source_ref,appliance:w.appliance,issue:w.issue,nte:w.nte};
+  S.wo={id:w.id,ref:w.ref,source:w.source_name,source_ref:w.source_ref,appliance:w.appliance,issue:w.issue,nte:w.nte,process:w._process||""};
   save(); render(); try{ autoCity(); }catch(e){} updateChecklist(); woShow(); renderLookup(); syncButtons();
   const d=digits(S.cust.phone); if(d.length>=7) scheduleSearch(d);
 }
@@ -900,6 +901,9 @@ async function woInit(){
   const {data:w,error}=await SB.from("work_orders").select("id,ref,intake_id,source_name,source_ref,contact_name,contact_phone,contact_email,street,unit,city,zip,appliance,issue,nte").eq("id",WO_ID).maybeSingle();
   if(error||!w){ woBanner("That work order could not be opened. Go back to Work orders and try again."); return; }
   if(w.intake_id){ woBanner("Work order "+esc(w.ref)+" already has an intake linked, so nothing was filled in."); return; }
+  // The sending company's approval process (who to call, which portal). Shown here and posted to the HCP job as its own note.
+  try{ const pr=await SB.from("work_order_source_processes").select("name,process"); const n=String(w.source_name||"").toLowerCase();
+    const hit=(pr.data||[]).filter(p=>n&&n.includes(String(p.name).toLowerCase())).sort((a,b)=>b.name.length-a.name.length)[0]; w._process=hit?hit.process:""; }catch(e){ w._process=""; }
   const busy=!(S.hcp&&S.hcp.saved)&&(Object.values(S.cust||{}).some(v=>String(v||"").trim())||(S.units||[]).some(u=>u.svc||u.app));
   if(!busy){ woApply(w); return; }
   woBanner("There is a call in progress on this screen. <button class=\"btn\" id=\"woStart\">Clear it and start work order "+esc(w.ref)+"</button> <button class=\"btn ghost\" id=\"woKeep\">Keep the current call</button>");
@@ -1212,6 +1216,8 @@ async function saveToHcp(kind){
                  catch(e2){ warn="Job created, but the line items didn't save: "+e2.message.slice(0,160)+". Add them in HCP."; } }
         else warn="Job created, but the line items didn't save: "+e1.message.slice(0,160)+". Add them in HCP.";
       }
+      if(S.wo&&S.wo.process){ try{ await call("job_note",{job_id:id,content:"APPROVAL PROCESS for "+S.wo.source+(S.wo.source_ref?" (their work order "+S.wo.source_ref+")":"")+": "+S.wo.process}); }
+        catch(en){ warn+="The approval process note didn't save to the job ("+en.message.slice(0,100)+"). Add it in HCP. "; } }
     } else {
       const li=buildLineItems(null).map(x=>{ const y=Object.assign({},x,{unit_price:Math.round(x.unit_price)}); delete y.taxable; return y; });
       res=await call("lead_create",{lead:{customer_id:cid,address_id:aid,line_items:li,tags:buildTags(),note}});
