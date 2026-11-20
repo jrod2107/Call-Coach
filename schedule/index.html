@@ -56,6 +56,23 @@ input{padding:7px 9px;min-height:36px}
 .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)}
 .pill.good{background:var(--good-bg);color:var(--good)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
 .empty{padding:18px 14px;color:var(--muted)}
+/* Route: a map beside the stops in booked order. */
+.rt{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;align-items:start}
+#map{height:560px;border:1px solid var(--line);border-radius:var(--r);background:var(--sunk);z-index:0}
+.rt .panel{overflow:hidden}
+.rt h2{font-size:14px;padding:10px 14px;background:var(--sunk);border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline}
+.rt h2:first-child{border-top:0}
+.rt h2 span{font-weight:400;font-size:12px;color:var(--muted)}
+.rt h2 i{width:10px;height:10px;border-radius:50%;display:inline-block;align-self:center}
+.stop{display:flex;gap:10px;padding:9px 14px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
+a.stop:hover{background:var(--sunk)}
+.stop .n{flex:0 0 26px;height:26px;border-radius:50%;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.stop .n.off{background:var(--sunk);color:var(--muted);border:1px dashed var(--muted)}
+.stop .m{min-width:0;flex:1}
+.leg{padding:3px 14px 3px 50px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);background:color-mix(in srgb,var(--sunk) 50%,transparent)}
+.blocks{margin:0 0 10px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--warn-bg);color:var(--warn)}
+.pin{border-radius:50%;color:#fff;font:700 12px/24px var(--body);text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.pin.shop{border-radius:4px;background:#111}
 .foot{margin-top:10px;font-size:13px}
 .card{max-width:400px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:12px}
 .fld{display:flex;flex-direction:column;gap:3px}
@@ -63,10 +80,12 @@ input{padding:7px 9px;min-height:36px}
 .fld input{padding:9px;width:100%}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600;justify-content:center}
 .notice{background:var(--bad-bg);color:var(--bad);border-radius:var(--r);padding:9px 11px;margin:0 0 10px}
+@media (max-width:1100px){.rt{grid-template-columns:1fr}#map{height:340px}}
 @media (max-width:860px){.bar button,.bar input{min-height:44px}.row .t{flex-basis:100%}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="../app.css">
 </head>
 <body>
@@ -75,6 +94,9 @@ input{padding:7px 9px;min-height:36px}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="../intake/schedule-settings.js"></script>
+<script src="../intake/route.js"></script>
 <script>
 /* Schedule: the Housecall Pro schedule, read from the site's own copy of the jobs (table jobs, filled by the
    jobs-sync function). It only reads. The database decides who sees what, exactly as on the Jobs page: office
@@ -97,8 +119,9 @@ const STATUS={'needs scheduling':['Needs scheduling','warn'],scheduled:['Schedul
 const st=j=>STATUS[j.work_status]||[j.work_status||'Unknown',''];
 const cancelled=j=>/cancel/.test(j.work_status||'');
 const NOBODY='No technician';
-const S={session:null,me:null,aal:null,view:innerWidth<860?'day':'week',day:today(),week:'',jobs:[],showCancelled:false,loading:false,err:''};
+const S={session:null,me:null,aal:null,view:innerWidth<860?'day':'week',day:today(),week:'',jobs:[],showCancelled:false,loading:false,err:'',route:null,rLoading:false,rTech:''};
 const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const seesAll=()=>!!S.me&&(['csr','admin'].includes(S.me.role)||(S.me.role==='tech'&&S.me.senior));
 
 async function whoami(){
@@ -148,23 +171,104 @@ function vDay(){
         <span class="muted">${esc(cut([j.job_type,j.description].filter(Boolean).join(': '),150))}</span></span>
         <span><span class="pill ${s[1]}">${esc(s[0])}</span></span></a>`}).join('')}).join('')}</div>`;
 }
+/* ---------- Route: one day, each technician's stops in booked order ----------
+   Street addresses and map positions come from the live Housecall Pro feed (the hcp-schedule function), which
+   only office accounts may call. Drive times are the same straight-line estimate the intake guide uses; no
+   outside routing service sees an address. The map background comes from OpenStreetMap, which only learns
+   which area of the map is on screen. */
+const SET=window.SCHED_SETTINGS||{},SR=window.SchedRoute,SHOP=SET.shop;
+const COLORS=['#1f62d6','#b45309','#0f766e','#7c3aed','#be185d'];
+const hasPt=p=>!!p&&typeof p.lat==='number'&&typeof p.lng==='number';
+const midnight=iso=>{for(const h of [5,6]){const d=new Date(`${iso}T0${h}:00:00Z`);if(parseInt(d.toLocaleString('en-US',{timeZone:TZ,hour:'numeric',hour12:false}),10)%24===0)return d}return new Date(iso+'T06:00:00Z')};
+const rWindow=j=>{const a=new Date(j.start),e=j.window?new Date(a.getTime()+j.window*6e4):j.end&&new Date(j.end);return fmtTime(a)+(e?' to '+fmtTime(e):'')};
+const rTechs=j=>Array.isArray(j.techs)&&j.techs.length?j.techs:[NOBODY];
+const mins=n=>n<60?Math.round(n)+' min':Math.floor(n/60)+' hr '+Math.round(n%60)+' min';
+async function loadRoute(force){
+  const day=S.day;
+  if(!force&&S.route&&S.route.day===day&&!S.route.err){render();return}
+  S.rLoading=true;S.route=null;render();
+  let out={day,jobs:[],events:null,err:''};
+  try{
+    const {data:{session}}=await SB.auth.getSession();if(session)S.session=session;
+    const r=await fetch(CFG.supabaseUrl+'/functions/v1/hcp-schedule',{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},
+      body:JSON.stringify({from:midnight(day).toISOString(),to:midnight(addDays(day,1)).toISOString()})});
+    let j=null;try{j=await r.json()}catch(e){}
+    if(r.status===401)out.err='Your sign-in has ended. Sign out, then sign in again.';
+    else if(!r.ok)out.err=r.status===502?'Housecall Pro did not answer just now. Wait a moment and press Refresh.':((j&&j.error)||('Error '+r.status));
+    else{out.jobs=(j.jobs||[]).filter(x=>dayKey(x.start)===day);out.events=j.events;out.fetched=j.fetched_at}
+  }catch(e){out.err='Could not reach the server. Check your connection and press Refresh.'}
+  if(day!==S.day)return;
+  S.rLoading=false;S.route=out;
+  const T=routeTechs();if(!T.includes(S.rTech)&&S.rTech!=='all')S.rTech=T[0]||'all';
+  render();
+}
+const routeTechs=()=>S.route?[...new Set(S.route.jobs.flatMap(rTechs))].sort((a,b)=>(a===NOBODY)-(b===NOBODY)||a.localeCompare(b)):[];
+/* The stops for one technician with the drive from the stop before (the day starts at the shop). */
+function routeOf(t){
+  const mine=S.route.jobs.filter(j=>rTechs(j).includes(t));let prev=hasPt(SHOP)?SHOP:null,total=0,miles=0;const rf=(SET.drive&&SET.drive.roadFactor)||1.3;
+  const stops=mine.map(j=>{const ok=hasPt(j);let leg=null;
+    if(ok&&prev&&SR){leg={min:SR.driveMinutes(prev,j,SET),mi:SR.miles(prev,j)*rf};total+=leg.min;miles+=leg.mi}
+    if(ok)prev=j;return {j,ok,leg}});
+  const last=stops.filter(x=>x.ok).pop();
+  const back=last&&hasPt(SHOP)&&SR?{min:SR.driveMinutes(last.j,SHOP,SET),mi:SR.miles(last.j,SHOP)*rf}:null;
+  return {t,stops,total,miles,back,off:stops.filter(x=>!x.ok).length};
+}
+function vRoute(){
+  if(S.rLoading||!S.route)return `<div class="panel"><div class="empty">Loading the route from Housecall Pro…</div></div>`;
+  if(S.route.err)return `<div class="notice">${esc(S.route.err)}</div>`;
+  const T=routeTechs();
+  if(!S.route.jobs.length)return `${vBlocks()}<div class="panel"><div class="empty">Nothing is on the schedule for this day.</div></div>`;
+  const pick=S.rTech==='all'?T:[S.rTech];
+  return `${vBlocks()}<div class="bar"><div class="grp" role="group" aria-label="Technician">${T.length>1?`<button data-a="rtech" data-t="all" aria-pressed="${S.rTech==='all'}">Everyone</button>`:''}${T.map(t=>`<button data-a="rtech" data-t="${esc(t)}" aria-pressed="${S.rTech===t}">${esc(t)}</button>`).join('')}</div></div>
+  <div class="rt"><div id="map" role="img" aria-label="Map of the day's stops. The same stops are listed in order beside it."></div>
+   <div class="panel">${pick.map(t=>{const R=routeOf(t),c=COLORS[T.indexOf(t)%COLORS.length];let n=0;
+     return `<h2><i style="background:${c}"></i>${esc(t)}<span>${R.stops.length} ${R.stops.length===1?'stop':'stops'} · about ${mins(R.total)} driving, ${R.miles.toFixed(0)} mi${R.off?` · ${R.off} not on the map`:''}</span></h2>
+      <div class="leg">Starts at the shop</div>`
+      +R.stops.map(x=>{const j=x.j,s=STATUS[j.status]||[j.status||'',''];if(x.ok)n++;
+        return `${x.leg?`<div class="leg">${mins(x.leg.min)} drive · ${x.leg.mi.toFixed(1)} mi</div>`:''}
+        <a class="stop" href="${j.number?'../jobs/#find='+encodeURIComponent(j.number):'../jobs/'}"><span class="n${x.ok?'':' off'}" ${x.ok?`style="background:${c}"`:''}>${x.ok?n:'?'}</span>
+         <span class="m"><b>${esc(rWindow(j))}</b> · ${esc(j.name||'No name')}<br><span class="muted">${esc([j.street,j.city].filter(Boolean).join(', ')||'No address')}</span>
+         ${x.ok?'':'<br><span class="muted">Not on the map: Housecall Pro has no map position for this address.</span>'}
+         ${s[0]?`<br><span class="pill ${s[1]}">${esc(s[0])}</span>`:''}</span></a>`}).join('')
+      +(R.back?`<div class="leg">Back to the shop: ${mins(R.back.min)} · ${R.back.mi.toFixed(1)} mi</div>`:'')}).join('')}</div></div>
+  <p class="muted foot">Stops are in the order they are booked. Drive times are estimates from straight-line distance, not live traffic, and the shop's map position is approximate. Read from Housecall Pro${S.route.fetched?' at '+fmtTime(S.route.fetched):''}.</p>`;
+}
+function vBlocks(){const E=(S.route&&S.route.events)||[];if(!E.length)return '';
+  return `<div class="blocks"><b>Calendar blocks this day:</b> ${E.map(e=>esc((e.all_day?'All day':fmtTime(e.start)+' to '+fmtTime(e.end))+' · '+(e.name||'Block')+((e.techs||[]).length?' ('+e.techs.join(', ')+')':''))).join('; ')}</div>`}
+let MAP=null;
+function drawMap(){
+  if(MAP){try{MAP.remove()}catch(e){}MAP=null}
+  const el=$('map');if(!el||!window.L||!S.route)return;
+  const T=routeTechs(),pick=S.rTech==='all'?T:[S.rTech],pts=[];
+  MAP=L.map(el,{scrollWheelZoom:false});
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(MAP);
+  const pin=(p,html,cls,style,tip)=>L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',html:`<div class="pin ${cls}" style="width:28px;height:28px;${style}">${html}</div>`,iconSize:[28,28],iconAnchor:[14,14]}),keyboard:false}).bindTooltip(tip).addTo(MAP);
+  if(hasPt(SHOP)){pin(SHOP,'S','shop','','Shop');pts.push([SHOP.lat,SHOP.lng])}
+  pick.forEach(t=>{const c=COLORS[T.indexOf(t)%COLORS.length],R=routeOf(t),line=hasPt(SHOP)?[[SHOP.lat,SHOP.lng]]:[];let n=0;
+    R.stops.filter(x=>x.ok).forEach(x=>{n++;line.push([x.j.lat,x.j.lng]);pts.push([x.j.lat,x.j.lng]);
+      pin(x.j,n,'',`background:${c}`,`${t}: stop ${n}, ${rWindow(x.j)}, ${x.j.name||''}`)});
+    if(line.length>1)L.polyline(line,{color:c,weight:3,opacity:.8}).addTo(MAP)});
+  if(pts.length>1)MAP.fitBounds(pts,{padding:[30,30]});else if(pts.length)MAP.setView(pts[0],12);else MAP.setView([29.88,-97.94],10);
+}
 function vPage(){
-  const D=days(),wk=S.view==='week';
+  if(S.view==='route'&&!office())S.view='day';
+  const D=days(),wk=S.view==='week',rt=S.view==='route';
   const label=wk?`${fmt(D[0],{month:'short',day:'numeric'})} to ${fmt(D[6],{month:'short',day:'numeric',year:'numeric'})}`:fmt(S.day,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const last=S.jobs.reduce((m,j)=>j.synced_at&&j.synced_at>m?j.synced_at:m,'');
   const gone=S.jobs.filter(cancelled).length;
-  return `<header class="top"><h1>Schedule</h1><span class="grow"></span><button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
+  return `<header class="top"><h1>Schedule</h1><span class="grow"></span><button data-a="refresh">${S.loading||S.rLoading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice">The schedule could not be loaded: ${esc(S.err)}</div>`:''}
    <div class="bar">
     <div class="grp"><button data-a="move" data-n="-1" aria-label="${wk?'Previous week':'Previous day'}">←</button><button data-a="today">Today</button><button data-a="move" data-n="1" aria-label="${wk?'Next week':'Next day'}">→</button></div>
     <span class="range">${label}</span><span class="grow"></span>
     <label>Go to date<input type="date" id="jump" value="${S.day}"></label>
-    <div class="grp" role="group" aria-label="View"><button data-a="view" data-v="week" aria-pressed="${wk}">Week</button><button data-a="view" data-v="day" aria-pressed="${!wk}">Day</button></div>
-    <label class="chk"><input type="checkbox" id="canc" ${S.showCancelled?'checked':''}>Show cancelled${gone?` (${gone})`:''}</label>
+    <div class="grp" role="group" aria-label="View"><button data-a="view" data-v="week" aria-pressed="${wk}">Week</button><button data-a="view" data-v="day" aria-pressed="${S.view==='day'}">Day</button>${office()?`<button data-a="view" data-v="route" aria-pressed="${rt}">Route</button>`:''}</div>
+    ${rt?'':`<label class="chk"><input type="checkbox" id="canc" ${S.showCancelled?'checked':''}>Show cancelled${gone?` (${gone})`:''}</label>`}
    </div>
-   ${wk?vWeek():vDay()}
-   <p class="muted foot">Copied from Housecall Pro about every 10 minutes${last?'; last copy '+new Date(last).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:TZ}):''}. Jobs only: time off and other calendar blocks are not shown yet. ${seesAll()?'':'You see your own jobs. '}Click a job to open it on the Jobs page.</p>
+   ${rt?vRoute():wk?vWeek():vDay()}
+   ${rt?'':`<p class="muted foot">Copied from Housecall Pro about every 10 minutes${last?'; last copy '+new Date(last).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:TZ}):''}. Jobs only: time off and other calendar blocks are not shown yet. ${seesAll()?'':'You see your own jobs. '}Click a job to open it on the Jobs page.</p>`}
   </div>`;
 }
 function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
@@ -182,17 +286,20 @@ function render(){
   if(window.AppShell)AppShell.set(S.session?S.me:null);
   $('app').innerHTML=!SB?'<div class="card"><h2>Schedule</h2><p>This page is missing its configuration (config.js).</p></div>'
     :!S.session?vLogin():!allowed()?vNoAccess():S.aal!=='aal2'?vCode():vPage();
+  drawMap();
 }
 const ready=()=>S.session&&allowed()&&S.aal==='aal2';
 
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a;
-  if(a==='refresh')load(true);
-  if(a==='move'){S.day=addDays(S.day,Number(el.dataset.n)*(S.view==='week'?7:1));load()}
-  if(a==='today'){S.day=today();load()}
-  if(a==='view'){S.view=el.dataset.v;render()}
+  const go=force=>{load(force);if(S.view==='route')loadRoute(force)};
+  if(a==='refresh')go(true);
+  if(a==='move'){S.day=addDays(S.day,Number(el.dataset.n)*(S.view==='week'?7:1));go()}
+  if(a==='today'){S.day=today();go()}
+  if(a==='view'){S.view=el.dataset.v;if(S.view==='route')loadRoute();else render()}
+  if(a==='rtech'){S.rTech=el.dataset.t;render()}
   if(a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
 document.addEventListener('change',e=>{
-  if(e.target.id==='jump'&&/^\d{4}-\d\d-\d\d$/.test(e.target.value)){S.day=e.target.value;load()}
+  if(e.target.id==='jump'&&/^\d{4}-\d\d-\d\d$/.test(e.target.value)){S.day=e.target.value;load();if(S.view==='route')loadRoute()}
   if(e.target.id==='canc'){S.showCancelled=e.target.checked;render()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
