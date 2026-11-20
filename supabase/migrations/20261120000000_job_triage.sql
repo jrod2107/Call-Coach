@@ -12,9 +12,10 @@
 --     a regular technician sees only their own jobs in their date window, and two-step sign-in is required.
 --   * Any of those people may fill in the unit and symptoms, suggest a part, and mark a job triaged.
 --   * Only a manager, admin or senior technician can sign off a suggested part (triage_sign_off()).
+--     (Widened to any technician by 20261120000100_triage_sign_off_all_techs.sql.)
 --   * The conversation with Claude is written only by the job-triage function, never straight from a page.
 --   * Managers alone can change the instructions Claude is given.
--- NOT YET APPLIED to the Call-Coach-CA project. Applying it is a live change and needs the owner's approval.
+-- Applied to the Call-Coach-CA project on 2026-11-19.
 
 create or replace function public.can_see_job_id(p_job uuid) returns boolean
  language sql stable security definer set search_path to 'public'

@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#161b22">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="../icons/icon-192.png">
+<title>City Appliance — Triage</title>
+<style>
+h1,h2,h3{margin:0}
+h2{font-size:15px} h3{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.muted{color:var(--muted)} .grow{flex:1}
+.top{display:flex}
+.wrap{max-width:1080px;padding-top:10px;padding-bottom:70px}
+button,.btn{padding:7px 12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;min-height:36px}
+button:disabled{opacity:.55;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-text);color:var(--accent-text)}
+input,select,textarea{padding:9px;width:100%}
+textarea{resize:vertical;min-height:70px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.tabs .n{margin-left:6px;font-variant-numeric:tabular-nums}
+.tabs .n.hot{background:var(--bad-bg);color:var(--bad);border-radius:4px;padding:0 6px}
+.sec{margin-top:20px}
+.sec>header{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px}
+.sec>header p{margin:0;flex-basis:100%}
+.panel{overflow:hidden}
+.item{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;padding:12px 14px;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .main{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:3px}
+.item .name{font-weight:600;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.item .acts{display:flex;flex-wrap:wrap;gap:6px}
+.sum{white-space:pre-wrap}
+.empty{padding:16px 14px;color:var(--muted)}
+.pill{background:var(--sunk);color:var(--muted)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.good{background:var(--good-bg);color:var(--good)}
+.card{max-width:380px;margin:9vh auto;background:var(--surface);border:1px solid var(--line);padding:22px;display:flex;flex-direction:column;gap:12px}
+.fld{display:flex;flex-direction:column;gap:3px}
+.fld>span{font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.notice{background:var(--bad-bg);color:var(--bad);border-radius:var(--r);padding:9px 11px;margin:10px 0}
+.notice.warn{background:var(--warn-bg);color:var(--warn)}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:0;width:min(760px,96vw);max-height:92vh}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.dh{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1}
+.db{padding:14px 16px;display:flex;flex-direction:column;gap:18px}
+.blk{display:flex;flex-direction:column;gap:8px}
+.ai{background:var(--sunk);border-radius:var(--r);padding:10px 12px}
+.ai details{margin-top:8px} .ai summary{cursor:pointer;color:var(--accent-text);font-weight:500}
+.prt{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.prt:first-of-type{border-top:0}
+.prt .main{flex:1 1 240px;min-width:0}
+.prt input{width:150px}
+.chat{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto}
+.msg{max-width:88%;padding:8px 11px;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:var(--accent-soft)}
+.msg.assistant{align-self:flex-start;background:var(--sunk)}
+.msg small{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+.send{display:flex;gap:8px;align-items:flex-end}
+.send textarea{min-height:44px}
+.calls{display:flex;flex-wrap:wrap;gap:8px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:var(--r);max-width:min(92vw,560px);z-index:90}
+#toast.bad{background:var(--bad);color:#fff}
+@media (max-width:860px){.item .acts{flex-basis:100%}button,.btn{min-height:44px}.prt input{width:100%}}
+@media print{.top button,.tabs,.acts,#toast{display:none!important}.panel{border:0}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../app.css">
+</head>
+<body>
+<script src="../shell.js" data-base="../" data-page="triage" data-bar="1"></script>
+<div id="app"></div>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+/* Triage: going through each job before the visit, so the right parts are on the truck.
+
+   "Jobs to triage" lists the coming jobs, the soonest first, and says how urgent each one is:
+     more than 48 hours out  -> Needs triage
+     inside 48 hours         -> Due now
+     inside 24 hours         -> Overdue
+   "Parts run" is the list to open before anyone drives to the parts house: what to buy, what is waiting for a
+   sign-off, and which coming jobs nobody has looked at yet.
+
+   A job is triaged only when a person says so. Claude drafts a summary and suggests parts to make that quick.
+   Who may see and do what is decided by the database (see the job_triage migration), never by this page.
+   Nothing is kept on the device. */
+const CFG=window.COACH_CONFIG||{};
+const DEMO=['localhost','127.0.0.1'].includes(location.hostname)&&/[?&]demo=1/.test(location.search);   /* stand-in data for the local preview only */
+const SB=(!DEMO&&window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TZ='America/Chicago',AHEAD_DAYS=14,PART_OPEN=['need_to_order','ordered','backordered','shipped','received'];
+const fmtWhen=iso=>iso?new Date(iso).toLocaleString('en-US',{timeZone:TZ,weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not scheduled';
+const fmtTime=iso=>new Date(iso).toLocaleString('en-US',{timeZone:TZ,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const cut=(s,n)=>{s=String(s||'').replace(/\s+/g,' ').trim();return s.length>n?s.slice(0,n-1)+'…':s};
+const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
+const hoursTo=j=>(new Date(j.scheduled_start)-Date.now())/36e5;
+const S={session:null,me:null,aal:null,tab:location.hash==='#run'?'run':'jobs',runDays:3,jobs:[],tri:{},sug:[],parts:[],set:null,loading:false,loaded:false,err:'',dlg:null,det:null,busy:''};
+const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
+const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
+const signer=()=>mgr()||(!!S.me&&S.me.role==='tech');
+
+let toastTimer;
+function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
+
+/* ---------- what each job needs ---------- */
+const triOf=j=>S.tri[j.id]||{job_id:j.id,status:'needs'};
+const isTriaged=j=>triOf(j).status==='triaged';
+const sugOf=j=>S.sug.filter(x=>x.job_id===j.id);
+const deskOf=j=>j.job_number?S.parts.filter(p=>String(p.job_number||'').trim()===String(j.job_number).trim()):[];
+/* How urgent an untriaged job is: [word shown, tone, rank]. */
+function urgency(j){
+  const h=hoursTo(j);
+  if(h<=24)return ['Overdue: visit is inside 24 hours','bad',0];
+  if(h<=48)return ['Due now: visit is inside 48 hours','warn',1];
+  return ['Needs triage','',2];
+}
+const CALL={none:'No parts needed',needed:'Parts needed',unsure:'Cannot tell before the visit'};
+function statePill(j){
+  const t=triOf(j);
+  if(t.status==='triaged')return pill('Triaged: '+(CALL[t.parts_call]||'done'),'good');
+  const u=urgency(j);return pill(u[0],u[1]);
+}
+const upcoming=()=>S.jobs.filter(j=>hoursTo(j)>-12);
+const untriaged=()=>upcoming().filter(j=>!isTriaged(j)).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
+const within=(j,days)=>hoursTo(j)<=days*24;
+
+/* ---------- loading ---------- */
+async function whoami(){
+  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
+  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+  const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();S.aal=a.data?a.data.currentLevel:null;
+}
+async function load(){
+  if(DEMO){demo();return}
+  S.loading=true;render();
+  const from=new Date(Date.now()-12*36e5).toISOString(),to=new Date(Date.now()+AHEAD_DAYS*864e5).toISOString();
+  const jr=await SB.from('jobs').select('id,hcp_job_id,job_number,description,work_status,scheduled_start,tech_names,tags,job_type,customer_name,city')
+    .is('deleted_at',null).is('canceled_at',null).in('work_status',['scheduled','in progress']).gte('scheduled_start',from).lt('scheduled_start',to).order('scheduled_start').limit(600);
+  S.jobs=jr.data||[];
+  const ids=S.jobs.map(j=>j.id);
+  const [tr,sg,pt,st]=await Promise.all([
+    ids.length?SB.from('job_triage').select('*').in('job_id',ids):Promise.resolve({data:[]}),
+    SB.from('job_triage_parts').select('*').in('status',['suggested','approved']).order('created_at').limit(1000),
+    SB.from('parts').select('id,tag,job_number,customer_name,appliance,part_number,description,qty,status,requested_by_name,created_at').in('status',PART_OPEN).limit(1000),
+    SB.from('triage_settings').select('instructions,daily_limit').eq('id',1).maybeSingle()]);
+  S.loading=false;S.loaded=true;
+  const bad=[jr,tr,sg,pt].find(r=>r.error);S.err=bad?bad.error.message:'';
+  S.tri={};(tr.data||[]).forEach(t=>{S.tri[t.job_id]=t});
+  S.sug=sg.data||[];S.parts=pt.data||[];S.set=st.data||null;
+  render();openFromHash();
+}
+function openFromHash(){
+  const m=/^#job=(.+)$/.exec(location.hash);if(!m)return;
+  const n=decodeURIComponent(m[1]),j=S.jobs.find(x=>String(x.job_number)===n||x.id===n);
+  if(j)openJob(j.id);else toast('That job is not in the next '+AHEAD_DAYS+' days of the schedule.',true);
+}
+async function fn(body){
+  if(DEMO){await new Promise(r=>setTimeout(r,500));return body.message?{reply:'(Stand-in answer) Check the defrost heater for continuity first, then the bimetal.'}:{summary:'(Stand-in) Likely a failed defrost heater.',parts:1}}
+  const {data:{session}}=await SB.auth.getSession();if(session)S.session=session;
+  const r=await fetch(CFG.supabaseUrl+'/functions/v1/job-triage',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:JSON.stringify(body)});
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error((j&&j.error)||(r.status===404?'The triage helper is not switched on yet.':'Error '+r.status));
+  return j;
+}
+
+/* ---------- one job ---------- */
+const job=id=>S.jobs.find(j=>j.id===id);
+async function openJob(id){
+  S.dlg=id;S.det={msgs:[],loading:!DEMO};renderDlg();if(!$('dlg').open)$('dlg').showModal();
+  if(DEMO){S.det.msgs=DEMO_MSGS[id]||[];renderDlg();return}
+  /* Make sure the job has a triage record to save into. */
+  if(!S.tri[id]){const {data,error}=await SB.from('job_triage').upsert({job_id:id},{onConflict:'job_id',ignoreDuplicates:true}).select().maybeSingle();
+    if(error){toast(error.message,true)}else if(data)S.tri[id]=data}
+  await refreshJob(id);
+}
+async function refreshJob(id){
+  if(DEMO){renderDlg();render();return}
+  const [t,p,m]=await Promise.all([SB.from('job_triage').select('*').eq('job_id',id).maybeSingle(),
+    SB.from('job_triage_parts').select('*').eq('job_id',id).order('created_at'),
+    SB.from('job_triage_messages').select('id,role,author_name,body,created_at').eq('job_id',id).order('id').limit(200)]);
+  if(t.data)S.tri[id]=t.data;
+  if(p.data)S.sug=S.sug.filter(x=>x.job_id!==id).concat(p.data.filter(x=>x.status!=='declined'));
+  if(S.dlg!==id)return;
+  S.det={msgs:m.data||[],loading:false};renderDlg();render();
+}
+async function saveUnit(id,quiet){
+  const v=k=>{const e=$('u-'+k);return e?(e.value.trim()||null):undefined},patch={};
+  for(const k of ['appliance','brand','model','serial','symptoms']){const x=v(k);if(x!==undefined)patch[k]=x}
+  if(DEMO){Object.assign(S.tri[id]=triOf(job(id)),patch);if(!quiet)toast('Saved.');return true}
+  const {data,error}=await SB.from('job_triage').update(patch).eq('job_id',id).select().maybeSingle();
+  if(error){toast(error.message,true);return false}
+  if(data)S.tri[id]=data;if(!quiet)toast('Saved.');return true;
+}
+async function draft(id){
+  if(!(await saveUnit(id,true)))return;
+  S.busy='draft';renderDlg();
+  try{const r=await fn({job_id:id});if(DEMO)Object.assign(S.tri[id],{summary:r.summary,ai_at:new Date().toISOString()});toast('Claude has drafted the triage. Read it over, then mark the job triaged.')}
+  catch(e){toast(e.message,true)}
+  S.busy='';await refreshJob(id);
+}
+async function send(id){
+  const box=$('chatBox'),text=box?box.value.trim():'';if(!text)return;
+  S.busy='chat';S.det.msgs.push({role:'user',author_name:S.me.display_name||'You',body:text,created_at:new Date().toISOString()});renderDlg();
+  try{const r=await fn({job_id:id,message:text});if(DEMO)S.det.msgs.push({role:'assistant',body:r.reply,created_at:new Date().toISOString()})}
+  catch(e){toast(e.message,true);S.det.msgs.pop();S.busy='';renderDlg();const b=$('chatBox');if(b)b.value=text;return}
+  S.busy='';await refreshJob(id);const c=document.querySelector('.chat');if(c)c.scrollTop=c.scrollHeight;
+}
+async function mark(id,call){
+  if(!(await saveUnit(id,true)))return;
+  const patch=call?{status:'triaged',parts_call:call}:{status:'needs',parts_call:null};
+  if(DEMO){Object.assign(S.tri[id],patch,{triaged_by_name:call?'You':null});renderDlg();render();return}
+  const {error}=await SB.from('job_triage').update(patch).eq('job_id',id);
+  if(error){toast(error.message,true);return}
+  toast(call?'Marked triaged.':'Put back on the list to triage.');await refreshJob(id);
+}
+async function addPart(id){
+  const d=$('np-desc').value.trim(),n=$('np-num').value.trim(),q=Math.max(1,parseInt($('np-qty').value,10)||1),w=$('np-why').value.trim();
+  if(!d){toast('Describe the part.',true);return}
+  if(DEMO){S.sug.push({id:'d'+Date.now(),job_id:id,part_number:n.toUpperCase(),description:d,qty:q,why:w,source:'person',status:'suggested',added_by_name:'You',added_by:S.me.id});renderDlg();render();return}
+  const {error}=await SB.from('job_triage_parts').insert({job_id:id,part_number:n,description:d,qty:q,why:w||null});
+  if(error){toast(error.message,true);return}
+  await refreshJob(id);
+}
+async function signOff(pid){
+  const x=S.sug.find(s=>s.id===pid);if(!x)return;
+  const inp=document.querySelector(`[data-pn="${pid}"]`),pn=inp?inp.value.trim():x.part_number;
+  if(!pn){toast('Type the part number before signing off.',true);if(inp)inp.focus();return}
+  if(DEMO){Object.assign(x,{status:'approved',part_number:pn.toUpperCase(),decided_by_name:'You'});S.parts.push({id:'p'+Date.now(),tag:'P01999',job_number:(job(x.job_id)||{}).job_number,part_number:pn.toUpperCase(),description:x.description,qty:x.qty,status:'need_to_order'});renderDlg();render();return}
+  const {error}=await SB.rpc('triage_sign_off',{p_id:pid,p_part_number:pn,p_qty:x.qty});
+  if(error){toast(error.message,true);return}
+  toast('Signed off. It is on the Parts desk as "need to order".');await load();if(S.dlg)renderDlg();
+}
+async function decline(pid){
+  const x=S.sug.find(s=>s.id===pid);if(!x)return;
+  if(DEMO){S.sug=S.sug.filter(s=>s.id!==pid);renderDlg();render();return}
+  const {error}=await SB.rpc('triage_decline',{p_id:pid});
+  if(error){toast(error.message,true);return}
+  S.sug=S.sug.filter(s=>s.id!==pid);renderDlg();render();
+}
+async function saveSettings(){
+  const ins=$('set-ins').value.trim(),lim=Math.max(0,Math.min(5000,parseInt($('set-lim').value,10)||0));
+  if(DEMO){S.set={instructions:ins,daily_limit:lim};toast('Saved.');return}
+  const {error}=await SB.from('triage_settings').update({instructions:ins,daily_limit:lim,updated_at:new Date().toISOString()}).eq('id',1);
+  if(error){toast(error.message,true);return}
+  S.set={instructions:ins,daily_limit:lim};toast('Saved. Claude uses the new instructions from the next job on.');
+}
+
+/* ---------- views ---------- */
+const jobLine=j=>`${esc(j.customer_name||'No name')}${j.city?' · '+esc(j.city):''}${j.job_number?` <span class="mono muted">Job ${esc(j.job_number)}</span>`:''}`;
+const unitLine=t=>[t.brand,t.appliance,t.model?'Model '+t.model:''].filter(Boolean).join(' · ');
+function vSug(x,inJob){
+  const j=job(x.job_id),ai=x.source==='ai',own=S.me&&x.added_by===S.me.id;
+  if(x.status==='approved')return `<div class="prt"><div class="main"><b class="mono">${esc(x.part_number)}</b> ${esc(x.description)}${x.qty>1?' × '+x.qty:''}
+    <div class="muted">Signed off by ${esc(x.decided_by_name||'')}</div></div>${pill('On the Parts desk','good')}</div>`;
+  return `<div class="prt"><div class="main">${!inJob&&j?`<div>${jobLine(j)} <span class="muted">${esc(fmtWhen(j.scheduled_start))}</span></div>`:''}
+    <b>${esc(x.description)}</b>${x.qty>1?' × '+x.qty:''} ${pill(ai?'Suggested by Claude':'Suggested by '+(x.added_by_name||'the team'),ai?'info':'')}
+    ${x.why?`<div class="muted">${esc(x.why)}</div>`:''}
+    ${ai?'<div class="muted">Check the part number against the model before ordering.</div>':''}</div>
+    ${signer()?`<label class="fld"><span>Part number</span><input data-pn="${esc(x.id)}" value="${esc(x.part_number||'')}" autocapitalize="characters" autocomplete="off"></label>
+      <button class="primary" data-a="signoff" data-id="${esc(x.id)}">Sign off and order</button><button data-a="decline" data-id="${esc(x.id)}">Not needed</button>`
+     :`${x.part_number?`<span class="mono">${esc(x.part_number)}</span>`:''}${pill('Waiting for sign-off','warn')}${own?`<button data-a="decline" data-id="${esc(x.id)}">Take it back</button>`:''}`}
+    ${!inJob&&j?`<button data-a="open" data-id="${esc(j.id)}">Open job</button>`:''}</div>`}
+function vJobRow(j){
+  const t=triOf(j),sg=sugOf(j).filter(x=>x.status==='suggested').length,dk=deskOf(j).length;
+  return `<div class="item"><div class="main">
+    <div class="name">${jobLine(j)} ${statePill(j)}</div>
+    <div>${esc(fmtWhen(j.scheduled_start))}${(j.tech_names||[]).length?' · '+esc(j.tech_names.join(', ')):''}</div>
+    <div class="muted">${esc(cut([j.job_type,j.description].filter(Boolean).join(': '),170))}</div>
+    <div>${unitLine(t)?esc(unitLine(t)):pill('No model number yet','warn')} ${sg?pill(sg+(sg===1?' part':' parts')+' waiting for sign-off','warn'):''} ${dk?pill(dk+(dk===1?' part':' parts')+' on the Parts desk','info'):''}</div>
+    ${t.summary?`<div class="sum">${esc(t.summary)}</div>`:''}</div>
+   <div class="acts"><button class="${isTriaged(j)?'':'primary'}" data-a="open" data-id="${esc(j.id)}">${isTriaged(j)?'Open':'Triage this job'}</button></div></div>`}
+const sec=(title,help,rows,empty,count)=>`<section class="sec"><header><h2>${title}</h2><span class="muted">${count==null?rows.length:count}</span><p class="muted">${help}</p></header>
+  <div class="panel">${rows.length?rows.join(''):`<div class="empty">${S.loaded?empty:'Loading…'}</div>`}</div></section>`;
+function vJobs(){
+  const U=untriaged(),late=U.filter(j=>urgency(j)[2]===0),due=U.filter(j=>urgency(j)[2]===1),later=U.filter(j=>urgency(j)[2]===2),done=upcoming().filter(isTriaged);
+  return (late.length?`<div class="notice">${late.length} ${late.length===1?'job is':'jobs are'} inside 24 hours and not triaged. Go through ${late.length===1?'it':'them'} now so the parts can be on the truck.</div>`:'')
+   +sec('Overdue: visit inside 24 hours','These should already be done.',late.map(vJobRow),'Nothing overdue.')
+   +sec('Due now: visit inside 48 hours','Triage these today, while there is still time to get parts.',due.map(vJobRow),'Nothing due.')
+   +sec('Needs triage: further out','Booked more than 48 hours ahead. Triage them before the next parts run.',later.map(vJobRow),'Nothing waiting.')
+   +sec('Triaged','Done for the next '+AHEAD_DAYS+' days of the schedule.',done.map(vJobRow),'No jobs triaged yet.');
+}
+function vRun(){
+  const buy=S.parts.filter(p=>p.status==='need_to_order'),wait=S.sug.filter(x=>x.status==='suggested'&&job(x.job_id));
+  const U=untriaged().filter(j=>within(j,S.runDays));
+  const thin=upcoming().filter(j=>isTriaged(j)&&triOf(j).parts_call==='needed'&&!sugOf(j).length&&!deskOf(j).length);
+  const unsure=upcoming().filter(j=>isTriaged(j)&&triOf(j).parts_call==='unsure'&&within(j,S.runDays));
+  const byJob=new Map();buy.forEach(p=>{const k=String(p.job_number||'').trim()||'No job';(byJob.get(k)||byJob.set(k,[]).get(k)).push(p)});
+  const vBuy=[...byJob].map(([k,ps])=>{const j=S.jobs.find(x=>String(x.job_number)===k);
+    return `<div class="item"><div class="main"><div class="name">${esc(ps[0].customer_name||(j&&j.customer_name)||'No name')} <span class="mono muted">Job ${esc(k)}</span>${j?' '+pill('Visit '+fmtWhen(j.scheduled_start),hoursTo(j)<=48?'warn':''):''}</div>
+      ${ps.map(p=>`<div><b class="mono">${esc(p.part_number)}</b> ${esc(cut(p.description,70))}${p.qty>1?' × '+p.qty:''} <span class="muted">${esc(p.tag||'')}${p.requested_by_name?' · asked for by '+esc(p.requested_by_name):''}</span></div>`).join('')}</div>
+     <div class="acts"><a class="btn" href="../parts/">Parts desk</a></div></div>`});
+  const warn=U.length+thin.length;
+  return (warn?`<div class="notice warn"><b>Before you go:</b> ${U.length?`${U.length} ${U.length===1?'job':'jobs'} in the next ${S.runDays} days ${U.length===1?'has':'have'} not been triaged, so we do not know if ${U.length===1?'it needs':'they need'} parts. `:''}${thin.length?`${thin.length} triaged ${thin.length===1?'job says':'jobs say'} parts are needed but ${thin.length===1?'lists':'list'} none.`:''}</div>`
+     :(S.loaded?`<div class="notice" style="background:var(--good-bg);color:var(--good)">Every job in the next ${S.runDays} days has been triaged.</div>`:''))
+   +`<div class="tabs" role="group" aria-label="How far ahead to check"><span class="muted" style="align-self:center">Check jobs in the next</span>${[2,3,5,7].map(d=>`<button aria-pressed="${S.runDays===d}" data-a="days" data-d="${d}">${d} days</button>`).join('')}</div>`
+   +sec('Not triaged yet','Go over these first. With a model number on file, Claude can draft the triage in under a minute.',U.map(vJobRow),'None. Good to go.')
+   +(thin.length?sec('Parts needed, none listed','Marked "parts needed" but no part was suggested or requested. Add the parts or ask the technician.',thin.map(vJobRow),''):'')
+   +sec('Waiting for sign-off','Suggested by Claude or a technician. '+(signer()?'Sign off the ones to buy; they go to the Parts desk.':'A manager or technician signs these off.'),
+        wait.map(x=>`<div class="item" style="display:block">${vSug(x,false)}</div>`),'Nothing waiting.',wait.length)
+   +sec('To buy','Signed off or requested, and not ordered yet. This is the Parts desk "need to order" list, by job.',vBuy,'Nothing to buy.',buy.length)
+   +(unsure.length?sec('Cannot tell before the visit','Triaged, but the parts depend on what the technician finds.',unsure.map(vJobRow),''):'');
+}
+function vSettings(){
+  if(!mgr()||!S.loaded)return '';
+  const s=S.set||{instructions:'',daily_limit:300};
+  return `<section class="sec"><details class="panel" style="padding:12px 14px"><summary style="cursor:pointer;font-weight:600">Triage settings (managers)</summary>
+    <div class="blk" style="margin-top:10px"><label class="fld"><span>Instructions for Claude. Paste the instructions from your own triage tool here. Leave empty to use the built-in ones.</span>
+      <textarea id="set-ins" rows="10">${esc(s.instructions||'')}</textarea></label>
+    <label class="fld" style="max-width:260px"><span>Most Claude answers in one day (spending limit)</span><input id="set-lim" type="number" min="0" max="5000" value="${esc(s.daily_limit)}"></label>
+    <div><button class="primary" data-a="saveset">Save settings</button></div></div></details></section>`}
+function vPage(){
+  const U=untriaged(),hot=U.filter(j=>urgency(j)[2]<2).length,run=S.parts.filter(p=>p.status==='need_to_order').length+S.sug.filter(x=>x.status==='suggested'&&job(x.job_id)).length;
+  return `<header class="top"><h1>Triage</h1><span class="grow"></span>
+    ${S.tab==='run'?'<button data-a="print">Print this list</button>':''}<button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
+  <div class="wrap">
+   ${DEMO?'<div class="notice warn">Stand-in data for the local preview. Nothing here is real or saved.</div>':''}
+   ${S.err?`<div class="notice">Some of this page could not be loaded: ${esc(S.err)}</div>`:''}
+   <div class="tabs" role="tablist"><button role="tab" aria-pressed="${S.tab==='jobs'}" data-a="tab" data-t="jobs">Jobs to triage<span class="n ${hot?'hot':''}">${U.length}</span></button>
+     <button role="tab" aria-pressed="${S.tab==='run'}" data-a="tab" data-t="run">Making a parts run<span class="n">${run}</span></button></div>
+   ${S.tab==='run'?vRun():vJobs()}${vSettings()}
+  </div>`;
+}
+function renderDlg(){
+  const d=$('dlg'),j=S.dlg&&job(S.dlg);if(!j){if(d.open)d.close();return}
+  const keep={};d.querySelectorAll('input[id],textarea[id]').forEach(e=>{keep[e.id]=e.value});   /* do not lose what is being typed */
+  const t=triOf(j),sg=sugOf(j),dk=deskOf(j),msgs=(S.det&&S.det.msgs)||[],busy=S.busy;
+  const f=(k,label,extra)=>`<label class="fld"><span>${label}</span><input id="u-${k}" value="${esc(t[k]||'')}" autocomplete="off" ${extra||''}></label>`;
+  d.innerHTML=`<div class="dh"><div class="grow"><h2>${jobLine(j)}</h2><div class="muted">${esc(fmtWhen(j.scheduled_start))}${(j.tech_names||[]).length?' · '+esc(j.tech_names.join(', ')):''}</div><div style="margin-top:4px">${statePill(j)}</div></div>
+     <button data-a="close" aria-label="Close">Close</button></div>
+   <div class="db">
+    <div class="blk"><h3>What the customer said</h3><div>${esc([j.job_type,j.description].filter(Boolean).join(': ')||'No description on the job.')}</div>
+      ${j.job_number?`<a href="../jobs/#find=${encodeURIComponent(j.job_number)}">Open the full job</a>`:''}</div>
+    <div class="blk"><h3>The unit</h3><div class="grid">${f('appliance','Appliance')}${f('brand','Brand')}${f('model','Model number','autocapitalize="characters"')}${f('serial','Serial number','autocapitalize="characters"')}</div>
+      <label class="fld"><span>More symptoms or details</span><textarea id="u-symptoms" rows="2">${esc(t.symptoms||'')}</textarea></label>
+      <div class="calls"><button data-a="saveunit">Save</button><button class="${t.ai_at?'':'primary'}" data-a="draft" ${busy?'disabled':''}>${busy==='draft'?'Claude is working…':t.ai_at?'Redo the triage with Claude':'Draft the triage with Claude'}</button></div></div>
+    ${t.summary?`<div class="blk"><h3>Claude's triage</h3><div class="ai"><div class="sum">${esc(t.summary)}</div>
+      ${t.detail?`<details><summary>Show the full write-up</summary><div class="sum" style="margin-top:6px">${esc(t.detail)}</div></details>`:''}
+      <div class="muted" style="margin-top:6px">Drafted ${esc(fmtTime(t.ai_at))}. A draft to check, not a diagnosis.</div></div></div>`:''}
+    <div class="blk"><h3>Parts for this job</h3>
+      ${sg.length||dk.length?'':'<div class="muted">No parts suggested or requested yet.</div>'}
+      ${sg.map(x=>vSug(x,true)).join('')}
+      ${dk.filter(p=>!sg.some(x=>x.part_id===p.id)).map(p=>`<div class="prt"><div class="main"><b class="mono">${esc(p.part_number)}</b> ${esc(p.description||'')}${p.qty>1?' × '+p.qty:''}</div>${pill('Parts desk: '+String(p.status).replace(/_/g,' '),p.status==='received'?'good':'info')}</div>`).join('')}
+      <details><summary style="cursor:pointer;color:var(--accent-text);font-weight:500">Suggest a part</summary>
+       <div class="grid" style="margin-top:8px"><label class="fld"><span>What part</span><input id="np-desc" autocomplete="off"></label><label class="fld"><span>Part number, if known</span><input id="np-num" autocapitalize="characters" autocomplete="off"></label>
+        <label class="fld"><span>How many</span><input id="np-qty" type="number" min="1" value="1"></label><label class="fld"><span>Why</span><input id="np-why" autocomplete="off"></label></div>
+       <div style="margin-top:8px"><button data-a="addpart">Add to the list</button></div></details></div>
+    <div class="blk"><h3>Talk it through with Claude</h3>
+      <div class="chat" aria-live="polite">${S.det&&S.det.loading?'<div class="muted">Loading…</div>':msgs.length?msgs.map(m=>`<div class="msg ${m.role==='assistant'?'assistant':'user'}"><small>${esc(m.role==='assistant'?'Claude':(m.author_name||'Team'))} · ${esc(fmtTime(m.created_at))}</small>${esc(m.body)}</div>`).join(''):'<div class="muted">Add what you find on the job (error codes, sounds, readings) and Claude will narrow it down.</div>'}
+        ${busy==='chat'?'<div class="msg assistant muted">Claude is thinking…</div>':''}</div>
+      <div class="send"><label class="fld grow"><span>Your message</span><textarea id="chatBox" rows="2"></textarea></label><button class="primary" data-a="send" ${busy?'disabled':''}>Send</button></div></div>
+    <div class="blk"><h3>${isTriaged(j)?'Triaged':'Finish the triage'}</h3>
+      ${isTriaged(j)?`<div>${pill('Triaged: '+(CALL[t.parts_call]||''),'good')} <span class="muted">by ${esc(t.triaged_by_name||'')}${t.triaged_at?' on '+esc(fmtTime(t.triaged_at)):''}</span></div><div><button data-a="mark" data-c="">Put back on the list</button></div>`
+       :`<div class="muted">Pick one. This takes the job off the "needs triage" list.</div><div class="calls"><button data-a="mark" data-c="needed">Parts needed</button><button data-a="mark" data-c="none">No parts needed</button><button data-a="mark" data-c="unsure">Cannot tell before the visit</button></div>`}</div>
+   </div>`;
+  for(const id in keep){const e=$(id);if(e&&id!=='chatBox'&&!id.startsWith('np-')&&keep[id]!==e.defaultValue)e.value=keep[id]}
+  const c=d.querySelector('.chat');if(c)c.scrollTop=c.scrollHeight;
+}
+function vLogin(){return `<form class="card" id="login"><h2>City Appliance Triage</h2>
+  <p class="muted">Sign in with your City Appliance email and password.</p>
+  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
+  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vNoAccess(){return `<div class="card"><h2>Waiting for access</h2>
+  <p>You are signed in as ${esc(S.me.email||'')}, but this account does not have access to Triage. Ask Jake to set your role.</p>
+  <a class="btn" href="../home/">Go to Home</a></div>`}
+function vTwoStep(){return `<div class="card"><h2>Enter your sign-in code first</h2>
+  <p>Triage shows job details, so it needs the 6-digit code from your authenticator app. Open Jobs, enter the code there, then come back.</p>
+  <a class="btn primary" href="../jobs/">Open Jobs</a></div>`}
+function render(){
+  if(window.AppShell)AppShell.set(S.session||DEMO?S.me:null);
+  $('app').innerHTML=DEMO?vPage():!SB?'<div class="card"><h2>Triage</h2><p>This page is missing its configuration (config.js).</p></div>'
+    :!S.session?vLogin():!allowed()?vNoAccess():S.aal!=='aal2'?vTwoStep():vPage();
+}
+
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,id=S.dlg;
+  if(a==='refresh')load();
+  if(a==='tab'){S.tab=el.dataset.t;history.replaceState(null,'',S.tab==='run'?'#run':location.pathname+location.search);render()}
+  if(a==='days'){S.runDays=+el.dataset.d;render()}
+  if(a==='print')window.print();
+  if(a==='open')openJob(el.dataset.id);
+  if(a==='close'){S.dlg=null;$('dlg').close()}
+  if(a==='saveunit')saveUnit(id);
+  if(a==='draft')draft(id);
+  if(a==='send')send(id);
+  if(a==='mark')mark(id,el.dataset.c);
+  if(a==='addpart')addPart(id);
+  if(a==='signoff')signOff(el.dataset.id);
+  if(a==='decline')decline(el.dataset.id);
+  if(a==='saveset')saveSettings();
+  if(a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+$('dlg').addEventListener('close',()=>{S.dlg=null});
+document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
+  const msg=$('lgMsg');msg.textContent='Signing in…';
+  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  if(error){msg.textContent=error.message;return}
+  S.session=data.session;await whoami();render();if(allowed()&&S.aal==='aal2')load()});
+
+/* ---------- stand-in data, local preview only ---------- */
+let DEMO_MSGS={};
+function demo(){
+  const at=h=>new Date(Date.now()+h*36e5).toISOString(),J=(n,h,name,city,type,desc,tech)=>({id:'j'+n,hcp_job_id:'h'+n,job_number:String(4000+n),scheduled_start:at(h),customer_name:name,city,job_type:type,description:desc,tech_names:[tech],work_status:'scheduled',tags:[]});
+  S.me={id:'me',display_name:'Demo Manager',email:'demo@example.com',role:'csr',manager:true};
+  S.jobs=[J(1,6,'Sample Customer A','Kyle','Refrigerator','Not cooling, freezer has frost on back wall','Tech One'),
+    J(2,20,'Sample Customer B','Buda','Dryer','No heat, runs fine','Tech Two'),
+    J(3,40,'Sample Customer C','San Marcos','Dishwasher','Not draining, error code','Tech One'),
+    J(4,70,'Sample Customer D','Wimberley','Washer','Loud noise on spin','Tech Two'),
+    J(5,120,'Sample Customer E','Lockhart','Oven','Bake element not heating','Tech One'),
+    J(6,30,'Sample Customer F','Kyle','Ice maker','Not making ice','Tech Two'),
+    J(7,26,'Sample Customer G','Buda','Range','Burner will not light','Tech One')];
+  S.tri={j1:{job_id:'j1',status:'needs',brand:'Whirlpool',appliance:'Refrigerator',model:'WRF555SDFZ',summary:'(Stand-in) Frost on the back wall points to a defrost failure. Bring a defrost heater and bimetal.',detail:'1. Defrost heater open\n2. Bimetal\n3. Control board',ai_at:at(-3)},
+    j2:{job_id:'j2',status:'triaged',parts_call:'needed',brand:'Maytag',appliance:'Dryer',model:'MEDC465HW',triaged_by_name:'Demo Manager',triaged_at:at(-5)},
+    j6:{job_id:'j6',status:'triaged',parts_call:'needed',brand:'LG',appliance:'Ice maker',triaged_by_name:'Demo Tech',triaged_at:at(-2)},
+    j7:{job_id:'j7',status:'triaged',parts_call:'unsure',brand:'GE',appliance:'Range',triaged_by_name:'Demo Tech',triaged_at:at(-2)},
+    j5:{job_id:'j5',status:'triaged',parts_call:'none',triaged_by_name:'Demo Manager',triaged_at:at(-9)}};
+  S.sug=[{id:'s1',job_id:'j1',part_number:'',description:'Defrost heater assembly',qty:1,why:'Frost pattern on the evaporator cover',source:'ai',status:'suggested',added_by_name:'Claude'},
+    {id:'s2',job_id:'j2',part_number:'WP3387747',description:'Heating element',qty:1,why:'No heat, drum turns',source:'person',status:'suggested',added_by_name:'Tech Two',added_by:'t2'}];
+  S.parts=[{id:'p1',tag:'P01021',job_number:'4004',customer_name:'Sample Customer D',part_number:'W10435302',description:'Tub bearing kit',qty:1,status:'need_to_order',requested_by_name:'Tech Two'},
+    {id:'p2',tag:'P01022',job_number:'3990',customer_name:'Sample Customer H',part_number:'DA97-12540G',description:'Ice maker assembly',qty:1,status:'need_to_order',requested_by_name:'Tech One'}];
+  DEMO_MSGS={j1:[{role:'assistant',body:'(Stand-in) Frost on the back wall points to a defrost failure.',created_at:at(-3)}]};
+  S.set={instructions:'',daily_limit:300};S.loaded=true;S.aal='aal2';render();openFromHash();
+}
+
+(async function boot(){
+  if(DEMO){demo();return}
+  if(!SB){render();return}
+  const {data:{session}}=await SB.auth.getSession();S.session=session;
+  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  if(session)await whoami();
+  render();if(S.session&&allowed()&&S.aal==='aal2')load();
+})();
+</script>
+</body>
+</html>

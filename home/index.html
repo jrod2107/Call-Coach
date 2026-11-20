@@ -67,7 +67,7 @@ const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12
 const ROLES=['admin','manager','csr','senior','tech','stock','pending'];
 const ROLE_NAME={admin:'Admin',manager:'Manager',csr:'Office (takes calls)',senior:'Senior technician',tech:'Technician',stock:'Stock helper',pending:'Waiting for access'};
 const roleKey=u=>u&&u.role==='csr'&&u.manager?'manager':u&&u.role==='tech'&&u.senior?'senior':(u&&u.role);
-const S={session:null,me:null,parts:[],wos:[],intakes:[],team:[],loading:false,err:''};
+const S={session:null,me:null,parts:[],wos:[],intakes:[],team:[],tri:null,loading:false,err:''};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
 const allowed=()=>!!S.me&&['csr','admin','tech','stock'].includes(S.me.role);
@@ -91,6 +91,35 @@ async function load(){
   if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];}
   S.intakes=office()&&res[1]?res[1].data||[]:[];
   render();
+  loadTriage();
+}
+/* Triage numbers: coming jobs nobody has gone through yet, and suggested parts waiting for a sign-off.
+   Job data needs two-step sign-in, so without it these stay hidden and the Triage page asks for the code. */
+async function loadTriage(){
+  S.tri=null;
+  if(!['csr','admin','tech'].includes(S.me.role))return;
+  try{
+    const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(!a.data||a.data.currentLevel!=='aal2'){S.tri={locked:true};render();return}
+    const from=new Date(Date.now()-12*36e5).toISOString(),to=new Date(Date.now()+14*864e5).toISOString();
+    const j=await SB.from('jobs').select('id,scheduled_start').is('deleted_at',null).is('canceled_at',null).in('work_status',['scheduled','in progress']).gte('scheduled_start',from).lt('scheduled_start',to).limit(600);
+    if(j.error)return;
+    const [t,s]=await Promise.all([SB.from('job_triage').select('job_id').eq('status','triaged').limit(2000),SB.from('job_triage_parts').select('id',{count:'exact',head:true}).eq('status','suggested')]);
+    if(t.error)return;   /* triage is not switched on yet */
+    const done=new Set((t.data||[]).map(x=>x.job_id)),hrs=x=>(new Date(x.scheduled_start)-Date.now())/36e5,open=(j.data||[]).filter(x=>!done.has(x.id));
+    S.tri={late:open.filter(x=>hrs(x)<=24).length,due:open.filter(x=>hrs(x)>24&&hrs(x)<=48).length,later:open.filter(x=>hrs(x)>48).length,signoff:s.count||0};
+    render();
+  }catch(e){}
+}
+function vTriage(){
+  const T=S.tri;if(!T)return '';
+  if(T.locked)return `<h3>Triage before the visit</h3><div class="grid"><a class="stat" href="../triage/"><b>Triage</b><span>Enter your sign-in code to see which jobs need triage</span></a></div>`;
+  return `<h3>Triage before the visit</h3><div class="grid">
+    ${stat(T.late,'Visit inside 24 hours, not triaged','bad','../triage/')}
+    ${stat(T.due,'Visit inside 48 hours, not triaged','warn','../triage/')}
+    ${stat(T.later,'Further out, needs triage','','../triage/')}
+    ${stat(T.signoff,'Suggested parts waiting for sign-off','warn','../triage/#run')}
+    <a class="stat" href="../triage/#run"><b>Parts run</b><span>Open the list before anyone drives to the parts house</span></a></div>`;
 }
 
 const stat=(n,label,tone,href)=>`<a class="stat ${n?tone||'':''}" href="${href}"><b>${n}</b><span>${label}</span></a>`;
@@ -98,7 +127,7 @@ function vAttention(){
   const P=S.parts,n=f=>P.filter(f).length,mine=p=>p.requested_by===S.me.id;
   if(office()){
     const weekJobs=S.intakes.filter(i=>i.outcome==='job').length,weekLeads=S.intakes.filter(i=>i.outcome!=='job').length;
-    return `<h3>Needs attention</h3><div class="grid">
+    return vTriage()+`<h3>Needs attention</h3><div class="grid">
       ${stat(n(p=>p.status==='need_to_order'),'Parts waiting to be ordered','warn','../parts/')}
       ${stat(n(p=>['ordered','shipped'].includes(p.status)&&p.eta&&daysUntil(p.eta)<0),'Orders past their arrival date','bad','../parts/')}
       ${stat(n(p=>p.status==='backordered'),'Backordered with no ETA','bad','../parts/')}
@@ -114,7 +143,7 @@ function vAttention(){
       ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../tobook/#calls')}</div>`;
   }
   if(S.me.role==='stock')return `<h3>Your work</h3><div class="grid"><a class="stat" href="../stock/"><b>Stock</b><span>Scan parts in, sort them, and keep the eBay list</span></a></div>`;
-  return `<h3>Your parts</h3><div class="grid">
+  return vTriage()+`<h3>Your parts</h3><div class="grid">
     ${stat(n(p=>p.status==='received'),'Parts in and ready for a job','good','../parts/')}
     ${stat(n(p=>mine(p)&&p.status==='need_to_order'),'Your requests waiting to be ordered','warn','../parts/')}
     ${stat(n(p=>mine(p)&&['ordered','backordered','shipped'].includes(p.status)),'Your requests on the way','','../parts/')}</div>`;

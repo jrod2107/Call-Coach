@@ -22,6 +22,7 @@
     {k:'tobook',label:'To book',href:'tobook/',roles:['admin','csr'],icon:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>'},
     {k:'schedule',label:'Schedule',href:'schedule/',roles:['admin','csr','tech'],icon:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M12 14h2M16 14h1M8 17h2M12 17h2"/>'},
     {k:'jobs',label:'Jobs',href:'jobs/',roles:['admin','csr','tech'],icon:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18"/>'},
+    {k:'triage',label:'Triage',href:'triage/',roles:['admin','csr','tech'],icon:'<path d="M9 4h6l1 3h3v13H5V7h3z"/><path d="M9 13l2 2 4-4"/>'},
     {k:'workorders',label:'Work orders',href:'workorders/',roles:['admin','csr'],icon:'<path d="M7 3h10v18H7z"/><path d="M10 8h4M10 12h4M10 16h2"/>'},
     {k:'pricing',label:'Job pricing',href:'pricing/',roles:['admin','csr','tech'],icon:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h4M8 16h2M12 16h4"/>'},
     {k:'parts',label:'Parts desk',href:'parts/',roles:['admin','csr','tech'],group:'Parts',icon:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>'},

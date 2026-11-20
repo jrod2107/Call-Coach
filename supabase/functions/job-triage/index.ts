@@ -18,7 +18,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // AUTO_BATCH jobs a run and only for jobs in the next AUTO_DAYS days.
 //
 // Secrets: ANTHROPIC_API_KEY (shared with invoice-read). TRIAGE_MODEL optional, default claude-sonnet-5-5.
-// NOT YET DEPLOYED. Deploying is a live change and needs the owner's approval.
+// verify_jwt is off so the scheduler can reach it; this file checks every caller itself.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
