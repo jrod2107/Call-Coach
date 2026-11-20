@@ -93,7 +93,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script src="../config.js"></script>
 <script>
 /* Job pricing v1: a calculator. Nothing is saved and no customer details are entered.
-     price = service charge (by appliance class) + labor level + parts
+     repair:     price = labor level + parts (no diagnostic fee)
+     no repair:  price = the diagnostic fee only (pricing_models.service_charge), collected in full today
    Parts use the same sell-price rule as Part lookup (pricing_models, see *part_lookup_v1.sql).
    The card price is the listed price. Check or cash takes the discount in pricing_settings (3.5%).
    Sales tax applies to the whole job. A return visit collects a deposit (50%); a same-day repair collects it all.
@@ -141,7 +142,8 @@ function partPrice(p,m){
 }
 function totals(){
   const m=curModel(),t=curTier(),st=S.settings||{};
-  const svc=m?Number(m.service_charge)||0:0,labor=t?Number(t.price)||0:0;
+  const repair=!!t;
+  const svc=repair?0:(m?Number(m.service_charge)||0:0),labor=t?Number(t.price)||0:0;
   let parts=0,missing=0;
   S.q.parts.forEach(p=>{const pp=partPrice(p,m),q=Math.max(1,parseInt(p.qty,10)||1);if(pp.each==null)missing++;else parts+=pp.each*q});
   parts=r2(parts);
@@ -150,8 +152,8 @@ function totals(){
   const disc=Number(st.cash_discount==null?0.035:st.cash_discount),dep=Number(st.deposit_pct==null?0.5:st.deposit_pct);
   const collected=numOrNull(S.q.collected)||0;
   const col=off=>{const d=r2(sub*off),net=r2(sub-d),tax=rate==null?0:r2(net*rate/100),total=r2(net+tax),due=Math.max(0,r2(total-collected));
-    const today=S.q.sameDay?due:r2(due*dep);return {disc:d,tax,total,due,today,later:r2(due-today)}};
-  return {svc,labor,parts,sub,rate,discPct:disc,depPct:dep,collected,missing,card:col(0),cash:col(disc)};
+    const today=(S.q.sameDay||!repair)?due:r2(due*dep);return {disc:d,tax,total,due,today,later:r2(due-today)}};
+  return {repair,full:S.q.sameDay||!repair,svc,labor,parts,sub,rate,discPct:disc,depPct:dep,collected,missing,card:col(0),cash:col(disc)};
 }
 
 /* ---------- data ---------- */
@@ -224,17 +226,16 @@ function vTotals(){
       ${t.missing?`<div class="notice bad">${t.missing} part${t.missing===1?' has':'s have'} no price yet, so the totals below leave ${t.missing===1?'it':'them'} out.</div>`:''}
       ${t.rate==null?'<div class="notice">No sales tax rate is set. Type the rate below, or ask an admin to set it under Prices. Totals are before tax until then.</div>':''}</div>
     <table><thead><tr><th></th><th class="num">Card</th><th class="num">Check or cash</th></tr></thead><tbody>
-      ${line('Service charge',money(t.svc),money(t.svc))}
-      ${line('Labor'+(curTier()?': '+esc(curTier().name):''),money(t.labor),money(t.labor))}
-      ${line('Parts',money(t.parts),money(t.parts))}
+      ${t.repair?line('Labor: '+esc(curTier().name),money(t.labor),money(t.labor)):line('Diagnostic fee (no repair)',money(t.svc),money(t.svc))}
+      ${t.repair||t.parts||t.missing?line('Parts',money(t.parts),money(t.parts)):''}
       ${line(`Check or cash discount (${r2(t.discPct*100)}%)`,'',k.disc?'−'+money(k.disc):money(0))}
       <tr><td><label for="tax">Sales tax %</label></td><td class="num" colspan="2"><input id="tax" data-k="tax" value="${esc(S.q.tax!==''?S.q.tax:t.rate==null?'':String(r2(t.rate*1000)/1000))}" inputmode="decimal" placeholder="0.00"></td></tr>
       ${line('Sales tax',money(c.tax),money(k.tax))}
       ${line('Total',money(c.total),money(k.total),'total')}
       <tr><td><label for="collected">Already collected (for example the diagnostic fee)</label></td><td class="num" colspan="2"><input id="collected" data-k="collected" value="${esc(S.q.collected)}" inputmode="decimal" placeholder="0.00"></td></tr>
       ${t.collected?line('Still owed',money(c.due),money(k.due)):''}
-      ${line(S.q.sameDay?'Collect today (repair finished)':`Collect today (${r2(t.depPct*100)}% deposit)`,money(c.today),money(k.today),'collect')}
-      ${S.q.sameDay?'':line('Balance on the return visit',money(c.later),money(k.later))}
+      ${line(!t.repair?'Collect today':S.q.sameDay?'Collect today (repair finished)':`Collect today (${r2(t.depPct*100)}% deposit)`,money(c.today),money(k.today),'collect')}
+      ${t.full?'':line('Balance on the return visit',money(c.later),money(k.later))}
     </tbody></table></div>`}
 
 function vMain(){
@@ -244,17 +245,18 @@ function vMain(){
   <div class="wrap">
     ${S.err?`<div class="notice bad">Could not load prices: ${esc(S.err)}</div>`:''}
     <div class="panel pad"><h3>1. Appliance class</h3>
-      <div class="choices">${S.models.map(x=>`<button class="choice" data-a="model" data-id="${x.id}" aria-pressed="${x.id===q.model}"><b>${esc(x.name)}</b><span>Service charge ${money(x.service_charge)}</span></button>`).join('')||'<div class="muted">No pricing models found.</div>'}</div></div>
-    <div class="panel pad"><h3>2. Labor</h3>
-      ${tiers.length?`<div class="choices"><button class="choice" data-a="tier" data-id="" aria-pressed="${!q.tier}"><b>No labor</b><span>Diagnostic only</span></button>
+      <div class="choices">${S.models.map(x=>`<button class="choice" data-a="model" data-id="${x.id}" aria-pressed="${x.id===q.model}"><b>${esc(x.name)}</b><span>Diagnostic fee ${money(x.service_charge)} if no repair</span></button>`).join('')||'<div class="muted">No pricing models found.</div>'}</div></div>
+    <div class="panel pad"><h3>2. Repair labor</h3>
+      <p class="muted" style="margin:0 0 8px">A repair is labor plus parts. The diagnostic fee is charged only when the customer does not go ahead.</p>
+      ${tiers.length?`<div class="choices"><button class="choice" data-a="tier" data-id="" aria-pressed="${!q.tier}"><b>No repair</b><span>Diagnostic fee only</span></button>
         ${tiers.map(t=>`<button class="choice" data-a="tier" data-id="${t.id}" aria-pressed="${t.id===q.tier}"><b>${esc(t.name)}</b><span>${money(t.price)}</span></button>`).join('')}</div>`
       :`<div class="notice">No labor levels are set for ${esc(m?m.name:'this class')} yet. ${isAdmin()?'Add them under Prices, top right.':'Ask an admin to add them.'}</div>`}</div>
     <div class="panel pad"><h3>3. Parts</h3>
       ${q.parts.map(vPart).join('')||'<div class="muted" style="margin-bottom:10px">No parts on this job yet.</div>'}
       <div class="row" style="margin-top:6px"><button data-a="addpart">Add a part</button></div></div>
-    <div class="panel pad"><h3>4. Is the repair finished today?</h3>
+    ${curTier()?`<div class="panel pad"><h3>4. Is the repair finished today?</h3>
       <div class="choices"><button class="choice" data-a="sameday" data-v="0" aria-pressed="${!q.sameDay}"><b>Return visit needed</b><span>Collect a deposit today</span></button>
-        <button class="choice" data-a="sameday" data-v="1" aria-pressed="${!!q.sameDay}"><b>Finished today</b><span>Collect the full amount</span></button></div></div>
+        <button class="choice" data-a="sameday" data-v="1" aria-pressed="${!!q.sameDay}"><b>Finished today</b><span>Collect the full amount</span></button></div></div>`:''}
     <div id="totals">${vTotals()}</div>
     <div class="row"><button class="primary" data-a="copy">Copy summary</button><button data-a="${S.armed==='reset'?'reset':'armreset'}">${S.armed==='reset'?'Tap again to clear everything':'Start over'}</button>
       <span class="muted">Nothing here is saved. Copy the summary into the job notes.</span></div>
@@ -275,20 +277,19 @@ function dPrices(){
           <button class="small" data-a="deltier" data-id="${t.id}">${S.armed===t.id?'Tap again to delete':'Delete'}</button></div>`).join('')||'<div class="muted" style="margin-bottom:6px">None yet.</div>'}
         <form class="row" data-newtier="${m.id}"><input style="flex:2 1 160px" name="name" placeholder="Name, for example Minor repair" required maxlength="60">
           <input style="flex:1 1 90px" name="price" inputmode="decimal" placeholder="Price" required><button class="small" type="submit">Add</button></form></div>`}).join('')}
-    <p class="muted">Service charges and part markups are set in Part lookup, under Pricing models.</p></div>`}
+    <p class="muted">Diagnostic fees and part markups are set in Part lookup, under Pricing models.</p></div>`}
 
 function summaryText(){
   const t=totals(),m=curModel(),tr=curTier(),L=[];
   L.push(`Quote (${m?m.name:'no class chosen'})`);
-  L.push(`Service charge: ${money(t.svc)}`);
-  if(tr)L.push(`Labor, ${tr.name}: ${money(t.labor)}`);
+  if(tr)L.push(`Labor, ${tr.name}: ${money(t.labor)}`);else L.push(`No repair. Diagnostic fee: ${money(t.svc)}`);
   S.q.parts.forEach(p=>{const pp=partPrice(p,m),q=Math.max(1,parseInt(p.qty,10)||1);
     L.push(`Part ${p.pn||'(no number)'}${p.desc?' '+p.desc:''}: ${pp.each==null?'NOT PRICED':(q>1?q+' x '+money(pp.each)+' = ':'')+money(pp.each*q)}`)});
   L.push(`Sales tax${t.rate==null?' (rate not set)':' '+r2(t.rate*1000)/1000+'%'}: card ${money(t.card.tax)}, check or cash ${money(t.cash.tax)}`);
   L.push(`Total by card: ${money(t.card.total)}`);
   L.push(`Total by check or cash (${r2(t.discPct*100)}% off): ${money(t.cash.total)}`);
   if(t.collected)L.push(`Already collected: ${money(t.collected)}`);
-  L.push(S.q.sameDay?`Collect today, repair finished: card ${money(t.card.today)}, check or cash ${money(t.cash.today)}`
+  L.push(!t.repair?`Collect today: card ${money(t.card.today)}, check or cash ${money(t.cash.today)}`:S.q.sameDay?`Collect today, repair finished: card ${money(t.card.today)}, check or cash ${money(t.cash.today)}`
     :`Collect today (${r2(t.depPct*100)}% deposit): card ${money(t.card.today)}, check or cash ${money(t.cash.today)}. Balance on return: card ${money(t.card.later)}, check or cash ${money(t.cash.later)}`);
   return L.join('\n')}
 
