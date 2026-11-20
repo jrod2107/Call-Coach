@@ -344,6 +344,10 @@ function scanForm(){
   const f=(label,k,attrs,cls)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="sc-${k}" data-scan="${k}" value="${esc(s[k])}" ${attrs||''}></label>`;
   return `<div class="row">${s.cam?`<button data-a="camstop">Turn camera off</button>${s.paused?'<button class="primary" data-a="camnext">Scan another barcode</button>':'<span class="muted">Point the camera at the barcode on the box.</span>'}`
      :'<button class="primary big" data-a="camstart">Scan a barcode with the camera</button><span class="muted">or type the part number below</span>'}</div>
+   <div class="row"><button data-a="labelpick" ${s.reading?'disabled':''}>${s.reading?'Reading the label…':'Photo of the part label'}</button><span class="muted">Reads the part number and name printed on the label. Use this when the barcode is not the part number.</span></div>
+   <input id="sc-label" type="file" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
+   ${s.fromLabel&&s.pn?'<div class="notice info">Read from the label. Check the part number and name before adding.</div>':''}
+   ${s.labelErr?`<div class="notice bad">${esc(s.labelErr)}</div>`:''}
    ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button></div>`:''}
    <div class="fields">
     ${f('Part number *','pn','class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false"','wide')}
@@ -546,8 +550,30 @@ function onScan(text){
   setScanPn(code);renderDlg();
 }
 function setScanPn(v){
-  const s=S.scan;s.pn=v;const c=S.cat[String(v).trim().toUpperCase()];
+  const s=S.scan;s.pn=v;s.fromLabel=false;s.labelErr='';const c=S.cat[String(v).trim().toUpperCase()];
   if(c){s.description=c.description;s.brand=c.brand;s.known=true}else if(s.known){s.description='';s.brand='';s.known=false}
+}
+/* Read the part number and name from a photo of the printed label. The barcode is not always the part number, so the label wins.
+   The label-read function only reads; the person checks the fields before anything is added to stock. */
+async function labelRead(file){
+  if(!S.scan)return;
+  await camStop();
+  S.scan.reading=true;S.scan.labelErr='';renderDlg();
+  try{
+    const img=await fileToPart(file);
+    const {data:{session}}=await SB.auth.getSession();if(!session)throw new Error('Your sign-in expired. Reload the page.');
+    const r=await fetch(CFG.supabaseUrl+'/functions/v1/label-read',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:CFG.supabaseAnonKey},body:JSON.stringify({file:img})});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok||!j||!j.data)throw new Error(j&&j.error||'The label could not be read.');
+    const d=j.data,str=x=>String(x==null?'':x).trim();
+    const pn=str(d.part_number).toUpperCase().replace(/\s+/g,'');
+    if(d.error||!pn)throw new Error('No part number was found on the label. Check that the photo is sharp and shows the part number, or type it below.');
+    if(!S.scan)return;
+    setScanPn(pn);
+    if(!S.scan.known){S.scan.description=str(d.description);S.scan.brand=str(d.brand)}
+    S.scan.fromLabel=true;S.scan.labelErr='';
+  }catch(e){if(S.scan)S.scan.labelErr=e.message||'The label could not be read.'}
+  finally{if(S.scan)S.scan.reading=false;if(S.dlg&&S.dlg.type==='scan')renderDlg()}
 }
 
 /* ---------- actions ---------- */
@@ -565,7 +591,7 @@ const A={
     const shop=S.locs.find(l=>l.active&&l.kind==='shop')||S.locs.find(l=>l.active);
     if(!shop){toast('Add a location first.',true);return}
     const keep=S.scan||{};
-    S.scan={pn:'',description:'',brand:'',known:false,qty:1,loc:keep.loc||S.loc||shop.id,bin:'',purpose:'undecided',condition:'new',cost:'',cam:false,paused:false,busy:false,last:null};
+    S.scan={pn:'',description:'',brand:'',known:false,qty:1,loc:keep.loc||S.loc||shop.id,bin:'',purpose:'undecided',condition:'new',cost:'',cam:false,paused:false,busy:false,last:null,reading:false,fromLabel:false,labelErr:''};
     if(d&&d.pn)setScanPn(d.pn);
     S.dlg={type:'scan'};$('dlg').innerHTML='';renderDlg();
   },
@@ -581,6 +607,7 @@ const A={
   invback:()=>{Object.assign(S.inv,{step:'pick',files:[],lines:[],err:'',dup:''});renderDlg()},
   invprint:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)printTags(r.stock)},
   camstart:()=>camStart(),
+  labelpick:()=>{const i=$('sc-label');if(i)i.click()},
   camstop:async()=>{await camStop();renderDlg()},
   camnext:()=>{S.scan.pn='';S.scan.description='';S.scan.brand='';S.scan.known=false;camResume();renderDlg()},
   addstock:async()=>{
@@ -663,6 +690,7 @@ document.addEventListener('input',e=>{const el=e.target;
   if(el.dataset.scan&&S.scan)S.scan[el.dataset.scan]=el.value});
 document.addEventListener('change',async e=>{const el=e.target;
   if(el.id==='locf'){S.loc=el.value;render();return}
+  if(el.id==='sc-label'){const f=el.files&&el.files[0];el.value='';if(f)labelRead(f);return}
   if(S.inv){
     if(el.id==='inv-files'){S.inv.files=[...el.files];S.inv.err='';renderDlg();return}
     if(el.id==='inv-loc'){S.inv.loc=el.value;return}
