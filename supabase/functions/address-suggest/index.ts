@@ -41,6 +41,14 @@ const BIAS = { rectangle: { low: { latitude: 29.40, longitude: -98.55 }, high: {
 const TOKEN = /^[A-Za-z0-9_-]{8,64}$/;
 const PLACE = /^[A-Za-z0-9_-]{10,300}$/;
 
+// Google said no. Log its reason (a status and a short message about the key or the request, never the address)
+// so the cause can be found, and tell the page the check is unavailable.
+async function refused(r: Response): Promise<Response> {
+  const e = await r.json().catch(() => null) as { error?: { status?: string; message?: string } } | null;
+  console.log(`google refused: http ${r.status} ${e?.error?.status || ""} ${String(e?.error?.message || "").slice(0, 200)}`);
+  return json({ error: "The address check did not answer.", google_status: r.status }, 502);
+}
+
 type Comp = { longText?: string; shortText?: string; types?: string[] };
 
 Deno.serve(async (req: Request) => {
@@ -62,7 +70,7 @@ Deno.serve(async (req: Request) => {
         headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "formattedAddress,addressComponents,location" },
         signal: AbortSignal.timeout(10000),
       });
-      if (!r.ok) return json({ error: "The address check did not answer.", google_status: r.status }, 502);
+      if (!r.ok) return refused(r);
       const d = await r.json() as { formattedAddress?: string; addressComponents?: Comp[]; location?: { latitude?: number; longitude?: number } };
       const part = (t: string, short = false) => { const c = (d.addressComponents || []).find((x) => (x.types || []).includes(t)); return c ? String((short ? c.shortText : c.longText) || "") : ""; };
       const street = [part("street_number"), part("route", true)].filter(Boolean).join(" ");
@@ -89,7 +97,7 @@ Deno.serve(async (req: Request) => {
       }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!r.ok) return json({ error: "The address check did not answer.", google_status: r.status }, 502);
+    if (!r.ok) return refused(r);
     const d = await r.json() as { suggestions?: { placePrediction?: { placeId?: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }[] };
     const suggestions = (d.suggestions || []).map((s) => s.placePrediction).filter((p) => p && p.placeId).slice(0, 5).map((p) => ({
       place_id: String(p!.placeId),

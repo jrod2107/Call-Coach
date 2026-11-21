@@ -124,9 +124,9 @@ const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const seesAll=()=>!!S.me&&(['csr','admin'].includes(S.me.role)||(S.me.role==='tech'&&S.me.senior));
 
-/* The 6-digit code is asked for once a week on each device, not at every visit. The sign-in itself records when
+/* The 6-digit code is asked for once every two weeks on each device, not at every visit. The sign-in itself records when
    the code was last entered. This only decides when to ask; what a person may read is decided in the database. */
-const CODE_DAYS=7;
+const CODE_DAYS=14;
 function codeAgeDays(){
   try{const p=JSON.parse(atob(S.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
     const t=(p.amr||[]).filter(a=>a&&a.method==='totp').map(a=>Number(a.timestamp)).filter(isFinite).sort((a,b)=>a-b).pop();
@@ -136,7 +136,7 @@ async function whoami(){
   const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
   const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();S.aal=a.data?a.data.currentLevel:null;
-  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS)S.aal='aal1';   /* a week has passed: ask again */
+  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS)S.aal='aal1';   /* two weeks have passed: ask again */
 }
 /* One week is loaded at a time: the week that holds the chosen day. */
 async function load(force){
@@ -289,7 +289,7 @@ function vNoAccess(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account cannot open the schedule. Ask Jake to set your role.</p>
   <a class="btn" href="../home/">Go to Home</a></div>`}
 function vCode(){return `<div class="card"><h2>One more step</h2>
-  <p>The schedule shows customer names, so it needs your two-step sign-in code. You enter it once a week on each device. Enter the code on the Jobs page, then come back here.</p>
+  <p>The schedule shows customer names, so it needs your two-step sign-in code. You enter it once every two weeks on each device. Enter the code on the Jobs page, then come back here.</p>
   <a class="btn primary" href="../jobs/">Go to Jobs to enter the code</a></div>`}
 function render(){
   if(window.AppShell)AppShell.set(S.session?S.me:null);

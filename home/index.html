@@ -101,13 +101,17 @@ async function loadTriage(){
   try{
     const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
     if(!a.data||a.data.currentLevel!=='aal2'){S.tri={locked:true};render();return}
-    const from=new Date(Date.now()-12*36e5).toISOString(),to=new Date(Date.now()+14*864e5).toISOString();
-    const j=await SB.from('jobs').select('id,scheduled_start').is('deleted_at',null).is('canceled_at',null).in('work_status',['scheduled','in progress']).gte('scheduled_start',from).lt('scheduled_start',to).limit(600);
+    const from=new Date().toISOString(),to=new Date(Date.now()+14*864e5).toISOString();   /* only visits still ahead */
+    const j=await SB.from('jobs').select('id,scheduled_start,job_number').is('deleted_at',null).is('canceled_at',null).eq('work_status','scheduled').gte('scheduled_start',from).lt('scheduled_start',to).limit(600);
     if(j.error)return;
-    const [t,s]=await Promise.all([SB.from('job_triage').select('job_id').eq('status','triaged').limit(2000),SB.from('job_triage_parts').select('id',{count:'exact',head:true}).eq('status','suggested')]);
+    const [t,s,dp]=await Promise.all([SB.from('job_triage').select('job_id').eq('status','triaged').limit(2000),SB.from('job_triage_parts').select('job_id').eq('status','suggested').limit(2000),
+      SB.from('parts').select('job_number').in('status',['need_to_order','ordered','backordered','shipped','received']).limit(2000)]);
     if(t.error)return;   /* triage is not switched on yet */
-    const done=new Set((t.data||[]).map(x=>x.job_id)),hrs=x=>(new Date(x.scheduled_start)-Date.now())/36e5,open=(j.data||[]).filter(x=>!done.has(x.id));
-    S.tri={late:open.filter(x=>hrs(x)<=24).length,due:open.filter(x=>hrs(x)>24&&hrs(x)<=48).length,later:open.filter(x=>hrs(x)>48).length,signoff:s.count||0};
+    const done=new Set((t.data||[]).map(x=>x.job_id)),hrs=x=>(new Date(x.scheduled_start)-Date.now())/36e5,
+      /* a job with parts already on the Parts desk has been looked at, the same rule as the Triage page */
+      desk=new Set(((dp&&dp.data)||[]).map(p=>String(p.job_number||'').trim()).filter(Boolean)),coming=new Set((j.data||[]).map(x=>x.id)),
+      open=(j.data||[]).filter(x=>!done.has(x.id)&&!desk.has(String(x.job_number||'').trim()));
+    S.tri={late:open.filter(x=>hrs(x)<=24).length,due:open.filter(x=>hrs(x)>24&&hrs(x)<=48).length,later:open.filter(x=>hrs(x)>48).length,signoff:((s&&s.data)||[]).filter(x=>coming.has(x.job_id)).length};
     render();
   }catch(e){}
 }

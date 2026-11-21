@@ -141,9 +141,9 @@ async function whoami(){
   const {data}=await SB.from('profiles').select('display_name,email,role,manager,senior,hcp_employee_id').eq('id',S.session.user.id).maybeSingle();
   S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
 }
-/* The 6-digit code is asked for once a week on each device, not at every visit. The sign-in itself records when
+/* The 6-digit code is asked for once every two weeks on each device, not at every visit. The sign-in itself records when
    the code was last entered. This only decides when to ask; what a person may read is decided in the database. */
-const CODE_DAYS=7;
+const CODE_DAYS=14;
 function codeAgeDays(){
   try{const p=JSON.parse(atob(S.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
     const t=(p.amr||[]).filter(a=>a&&a.method==='totp').map(a=>Number(a.timestamp)).filter(isFinite).sort((a,b)=>a-b).pop();
@@ -152,7 +152,7 @@ function codeAgeDays(){
 async function checkAal(){
   const {data}=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
   S.aal=data?data.currentLevel:null;S.next=data?data.nextLevel:null;
-  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS){S.aal='aal1';S.next='aal2'}   /* a week has passed: ask again */
+  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS){S.aal='aal1';S.next='aal2'}   /* two weeks have passed: ask again */
 }
 async function load(){
   if(fromHash())find();
@@ -230,7 +230,7 @@ function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account does not have access to Jobs. Ask Jake to set your role.</p>
   <p><a href="../home/">Back to Home</a></p><button data-a="signout">Sign out</button></div>`}
 function vVerify(){return `<form class="card" id="mfa"><h2>Enter your sign-in code</h2>
-  <p class="muted">Jobs holds customer details, so it asks for the 6-digit code from your authenticator app. You enter it once a week on each device.</p>
+  <p class="muted">Jobs holds customer details, so it asks for the 6-digit code from your authenticator app. You enter it once every two weeks on each device.</p>
   <input id="mfaCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="6-digit code" required>
   <button class="primary" type="submit">${S.busy==='mfa'?'Checking…':'Continue'}</button><div id="mfaMsg" class="muted" role="status"></div>
   <p class="muted" style="margin:0">Lost your phone? Ask Jake to reset your two-step sign-in.</p>

@@ -90,6 +90,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
    "Parts run" is the list to open before anyone drives to the parts house: what to buy, what is waiting for a
    sign-off, and which coming jobs nobody has looked at yet.
 
+   Only visits still ahead are listed: once a visit has started it drops off. A job that already has parts on the
+   Parts desk counts as looked at and is not asked for again.
    A job is triaged only when a person says so. Claude drafts a summary and suggests parts to make that quick.
    Who may see and do what is decided by the database (see the job_triage migration), never by this page.
    Nothing is kept on the device. */
@@ -115,6 +117,8 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 /* ---------- what each job needs ---------- */
 const triOf=j=>S.tri[j.id]||{job_id:j.id,status:'needs'};
 const isTriaged=j=>triOf(j).status==='triaged';
+/* A job that already has parts on the Parts desk has been looked at, so it does not wait for triage either. */
+const handled=j=>isTriaged(j)||deskOf(j).length>0;
 const sugOf=j=>S.sug.filter(x=>x.job_id===j.id);
 const deskOf=j=>j.job_number?S.parts.filter(p=>String(p.job_number||'').trim()===String(j.job_number).trim()):[];
 /* How urgent an untriaged job is: [word shown, tone, rank]. */
@@ -128,10 +132,12 @@ const CALL={none:'No parts needed',needed:'Parts needed',unsure:'Cannot tell bef
 function statePill(j){
   const t=triOf(j);
   if(t.status==='triaged')return pill('Triaged: '+(CALL[t.parts_call]||'done'),'good');
+  if(deskOf(j).length)return pill('Parts already on the Parts desk','good');
   const u=urgency(j);return pill(u[0],u[1]);
 }
-const upcoming=()=>S.jobs.filter(j=>hoursTo(j)>-12);
-const untriaged=()=>upcoming().filter(j=>!isTriaged(j)).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
+/* Only visits still ahead. A visit whose start time has passed is on the technician now, not on this list. */
+const upcoming=()=>S.jobs.filter(j=>hoursTo(j)>0);
+const untriaged=()=>upcoming().filter(j=>!handled(j)).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
 const within=(j,days)=>hoursTo(j)<=days*24;
 
 /* ---------- loading ---------- */
@@ -143,9 +149,9 @@ async function whoami(){
 async function load(){
   if(DEMO){demo();return}
   S.loading=true;render();
-  const from=new Date(Date.now()-12*36e5).toISOString(),to=new Date(Date.now()+AHEAD_DAYS*864e5).toISOString();
+  const from=new Date().toISOString(),to=new Date(Date.now()+AHEAD_DAYS*864e5).toISOString();
   const jr=await SB.from('jobs').select('id,hcp_job_id,job_number,description,work_status,scheduled_start,tech_names,tags,job_type,customer_name,city')
-    .is('deleted_at',null).is('canceled_at',null).in('work_status',['scheduled','in progress']).gte('scheduled_start',from).lt('scheduled_start',to).order('scheduled_start').limit(600);
+    .is('deleted_at',null).is('canceled_at',null).eq('work_status','scheduled').gte('scheduled_start',from).lt('scheduled_start',to).order('scheduled_start').limit(600);
   S.jobs=jr.data||[];
   const ids=S.jobs.map(j=>j.id);
   const [tr,sg,pt,st]=await Promise.all([
@@ -283,7 +289,7 @@ function vJobRow(j){
 const sec=(title,help,rows,empty,count)=>`<section class="sec"><header><h2>${title}</h2><span class="muted">${count==null?rows.length:count}</span><p class="muted">${help}</p></header>
   <div class="panel">${rows.length?rows.join(''):`<div class="empty">${S.loaded?empty:'Loading…'}</div>`}</div></section>`;
 function vJobs(){
-  const U=untriaged(),late=U.filter(j=>urgency(j)[2]===0),due=U.filter(j=>urgency(j)[2]===1),later=U.filter(j=>urgency(j)[2]===2),done=upcoming().filter(isTriaged);
+  const U=untriaged(),late=U.filter(j=>urgency(j)[2]===0),due=U.filter(j=>urgency(j)[2]===1),later=U.filter(j=>urgency(j)[2]===2),done=upcoming().filter(handled);
   return (late.length?`<div class="notice">${late.length} ${late.length===1?'job is':'jobs are'} inside 24 hours and not triaged. Go through ${late.length===1?'it':'them'} now so the parts can be on the truck.</div>`:'')
    +sec('Overdue: visit inside 24 hours','These should already be done.',late.map(vJobRow),'Nothing overdue.')
    +sec('Due now: visit inside 48 hours','Triage these today, while there is still time to get parts.',due.map(vJobRow),'Nothing due.')
