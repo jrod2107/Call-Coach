@@ -94,7 +94,10 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script>
 /* Job pricing v1: a calculator. Nothing is saved and no customer details are entered.
      repair:     price = labor level + parts (no diagnostic fee)
-     no repair:  price = the diagnostic fee only (pricing_models.service_charge), collected in full today
+     no repair:  price = the diagnostic fee only, collected in full today
+   The diagnostic fee comes from the service zone (service_zones, imported from the owner's service area map).
+   A zone is picked by hand, from the device's location, or from an address (the zone-lookup server function).
+   Where zones overlap the lowest fee wins. The address typed for the lookup is never saved.
    Parts use the same sell-price rule as Part lookup (pricing_models, see *part_lookup_v1.sql).
    The card price is the listed price. Check or cash takes the discount in pricing_settings (3.5%).
    Sales tax applies to the whole job. A return visit collects a deposit (50%); a same-day repair collects it all.
@@ -111,13 +114,14 @@ const pill=(l,t)=>`<span class="pill ${t||''}">${esc(l)}</span>`;
 const store={get:k=>{try{return JSON.parse(localStorage.getItem('pricing.'+k))}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem('pricing.'+k,JSON.stringify(v))}catch(e){}}};
 
 const blankPart=()=>({pn:'',desc:'',qty:'1',list:'',cost:'',sell:'',note:'',busy:false});
-const blankQuote=()=>({model:'',tier:'',parts:[],tax:'',collected:'',sameDay:false});
-const S={session:null,me:null,models:[],tiers:[],settings:null,err:'',dlg:null,armed:null,q:store.get('q')||blankQuote()};
+const blankQuote=()=>({zone:'',model:'',tier:'',parts:[],tax:'',collected:'',sameDay:false});
+const S={session:null,me:null,models:[],tiers:[],zones:[],zaddr:'',znote:'',zbusy:false,settings:null,err:'',dlg:null,armed:null,q:store.get('q')||blankQuote()};
 const isAdmin=()=>!!S.me&&S.me.role==='admin';
 const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const curModel=()=>S.models.find(m=>m.id===S.q.model)||null;
 const modelTiers=()=>S.tiers.filter(t=>t.model_id===S.q.model).sort((a,b)=>a.sort-b.sort||a.price-b.price);
 const curTier=()=>modelTiers().find(t=>t.id===S.q.tier)||null;
+const curZone=()=>S.zones.find(z=>z.id===S.q.zone)||null;
 
 let toastTimer;
 function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4200)}
@@ -141,9 +145,9 @@ function partPrice(p,m){
     oddList:list>0&&cost>0&&list<cost*1.3};
 }
 function totals(){
-  const m=curModel(),t=curTier(),st=S.settings||{};
+  const m=curModel(),t=curTier(),z=curZone(),st=S.settings||{};
   const repair=!!t;
-  const svc=repair?0:(m?Number(m.service_charge)||0:0),labor=t?Number(t.price)||0:0;
+  const svc=repair?0:(z?Number(z.fee)||0:0),labor=t?Number(t.price)||0:0;
   let parts=0,missing=0;
   S.q.parts.forEach(p=>{const pp=partPrice(p,m),q=Math.max(1,parseInt(p.qty,10)||1);if(pp.each==null)missing++;else parts+=pp.each*q});
   parts=r2(parts);
@@ -153,7 +157,7 @@ function totals(){
   const collected=numOrNull(S.q.collected)||0;
   const col=off=>{const d=r2(sub*off),net=r2(sub-d),tax=rate==null?0:r2(net*rate/100),total=r2(net+tax),due=Math.max(0,r2(total-collected));
     const today=(S.q.sameDay||!repair)?due:r2(due*dep);return {disc:d,tax,total,due,today,later:r2(due-today)}};
-  return {repair,full:S.q.sameDay||!repair,svc,labor,parts,sub,rate,discPct:disc,depPct:dep,collected,missing,card:col(0),cash:col(disc)};
+  return {repair,noZone:!repair&&!z,full:S.q.sameDay||!repair,svc,labor,parts,sub,rate,discPct:disc,depPct:dep,collected,missing,card:col(0),cash:col(disc)};
 }
 
 /* ---------- data ---------- */
@@ -162,13 +166,40 @@ async function whoami(){
   S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
 }
 async function loadBase(){
-  const [m,t,s]=await Promise.all([SB.from('pricing_models').select('*').order('sort'),SB.from('labor_tiers').select('*').order('sort'),SB.from('pricing_settings').select('*').maybeSingle()]);
-  const bad=[m,t,s].find(r=>r.error);if(bad){S.err=bad.error.message;render();return}
-  S.models=m.data||[];S.tiers=t.data||[];S.settings=s.data||{};S.err='';
+  const [m,t,s,z]=await Promise.all([SB.from('pricing_models').select('*').order('sort'),SB.from('labor_tiers').select('*').order('sort'),SB.from('pricing_settings').select('*').maybeSingle(),
+    SB.from('service_zones').select('id,name,fee,days,boundary,sort').eq('active',true).order('sort')]);
+  const bad=[m,t,s,z].find(r=>r.error);if(bad){S.err=bad.error.message;render();return}
+  S.models=m.data||[];S.tiers=t.data||[];S.settings=s.data||{};S.zones=z.data||[];S.err='';
+  if(!curZone())S.q.zone='';
   if(!S.models.some(x=>x.id===S.q.model))S.q.model=(S.models.find(x=>x.is_default)||S.models[0]||{}).id||'';
   if(!curTier())S.q.tier='';
   render();
 }
+/* ---------- service zones ---------- */
+/* Is the point inside the outline? Outlines are lists of [longitude, latitude]. */
+function inPoly(x,y,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+  if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c}return c}
+/* Zones overlap (an inner area sits inside its outer ring), so the lowest fee wins. */
+function zoneAt(lng,lat){return S.zones.filter(z=>Array.isArray(z.boundary)&&z.boundary.length>2&&inPoly(lng,lat,z.boundary)).sort((a,b)=>Number(a.fee)-Number(b.fee))[0]||null}
+function setZoneFromPoint(lng,lat,how){const z=zoneAt(lng,lat);
+  if(z){S.q.zone=z.id;S.znote=how+' Zone: '+z.name+'.'}
+  else{S.q.zone='';S.znote=how+' That spot is outside the service areas on the map. Pick the area by hand if we do serve it.'}
+  saveDraft();render()}
+async function findZone(){
+  const a=(S.zaddr||'').trim();if(a.length<6){toast('Type the street address and the city or zip.',true);return}
+  S.zbusy=true;S.znote='';render();
+  try{const {data:{session}}=await SB.auth.getSession();
+    const r=await fetch(CFG.supabaseUrl+'/functions/v1/zone-lookup',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token,apikey:CFG.supabaseAnonKey},body:JSON.stringify({address:a})});
+    const d=await r.json();S.zbusy=false;
+    if(!r.ok||d.error){S.znote=d.error||'The address lookup failed. Pick the area by hand.';render();return}
+    if(!d.found){S.znote='Could not find that address. Check the spelling, or pick the area by hand.';render();return}
+    setZoneFromPoint(d.lng,d.lat,'Found '+d.matched+'.')}
+  catch(e){S.zbusy=false;S.znote='The address lookup failed. Pick the area by hand.';render()}}
+function hereZone(){
+  if(!navigator.geolocation){toast('This device cannot share its location.',true);return}
+  navigator.geolocation.getCurrentPosition(p=>setZoneFromPoint(p.coords.longitude,p.coords.latitude,"Used this device's location."),
+    ()=>toast('Could not get the location. Pick the area by hand.',true),{enableHighAccuracy:true,timeout:10000})}
+
 /* Fill a part line from the saved vendor prices (the same pick Part lookup shows). */
 async function lookupPart(i){
   const p=S.q.parts[i];if(!p)return;const pn=normPn(p.pn);if(pn.length<3){toast('Type the part number first.',true);return}
@@ -224,9 +255,10 @@ function vTotals(){
   const line=(l,a,b,cls)=>`<tr class="${cls||''}"><td>${l}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`;
   return `<div class="panel"><div class="pad" style="padding-bottom:6px"><h3>Price</h3>
       ${t.missing?`<div class="notice bad">${t.missing} part${t.missing===1?' has':'s have'} no price yet, so the totals below leave ${t.missing===1?'it':'them'} out.</div>`:''}
+      ${t.noZone?'<div class="notice">Pick the area in step 1 to get the diagnostic fee.</div>':''}
       ${t.rate==null?'<div class="notice">No sales tax rate is set. Type the rate below, or ask an admin to set it under Prices. Totals are before tax until then.</div>':''}</div>
     <table><thead><tr><th></th><th class="num">Card</th><th class="num">Check or cash</th></tr></thead><tbody>
-      ${t.repair?line('Labor: '+esc(curTier().name),money(t.labor),money(t.labor)):line('Diagnostic fee (no repair)',money(t.svc),money(t.svc))}
+      ${t.repair?line('Labor: '+esc(curTier().name),money(t.labor),money(t.labor)):line('Diagnostic fee (no repair)'+(curZone()?': '+esc(curZone().name):''),money(t.svc),money(t.svc))}
       ${t.repair||t.parts||t.missing?line('Parts',money(t.parts),money(t.parts)):''}
       ${line(`Check or cash discount (${r2(t.discPct*100)}%)`,'',k.disc?'−'+money(k.disc):money(0))}
       <tr><td><label for="tax">Sales tax %</label></td><td class="num" colspan="2"><input id="tax" data-k="tax" value="${esc(S.q.tax!==''?S.q.tax:t.rate==null?'':String(r2(t.rate*1000)/1000))}" inputmode="decimal" placeholder="0.00"></td></tr>
@@ -244,17 +276,24 @@ function vMain(){
       ${isAdmin()?'<button data-a="prices">Prices</button>':''}</div>
   <div class="wrap">
     ${S.err?`<div class="notice bad">Could not load prices: ${esc(S.err)}</div>`:''}
-    <div class="panel pad"><h3>1. Appliance class</h3>
-      <div class="choices">${S.models.map(x=>`<button class="choice" data-a="model" data-id="${x.id}" aria-pressed="${x.id===q.model}"><b>${esc(x.name)}</b><span>Diagnostic fee ${money(x.service_charge)} if no repair</span></button>`).join('')||'<div class="muted">No pricing models found.</div>'}</div></div>
-    <div class="panel pad"><h3>2. Repair labor</h3>
+    <div class="panel pad"><h3>1. Area</h3>
+      <p class="muted" style="margin:0 0 8px">The area sets the diagnostic fee. Find it from the address, or pick it below.</p>
+      <div class="pnrow"><label class="fld"><span>Service address</span><input id="zaddr" value="${esc(S.zaddr)}" autocomplete="off" placeholder="Street, then city or zip"></label>
+        <button data-a="findzone" ${S.zbusy?'disabled':''}>${S.zbusy?'Looking…':'Find zone'}</button></div>
+      <div class="row" style="margin:6px 0"><button class="small" data-a="herezone">Use my location</button><span class="muted">The address is not saved.</span></div>
+      ${S.znote?`<div class="notice">${esc(S.znote)}</div>`:''}
+      <div class="choices">${S.zones.map(z=>`<button class="choice" data-a="zone" data-id="${z.id}" aria-pressed="${z.id===q.zone}"><b>${esc(z.name)}</b><span>${money(z.fee)}${z.days?' · '+esc(z.days):''}</span></button>`).join('')||'<div class="muted">No areas are set up yet.</div>'}</div></div>
+    <div class="panel pad"><h3>2. Appliance class</h3>
+      <div class="choices">${S.models.map(x=>`<button class="choice" data-a="model" data-id="${x.id}" aria-pressed="${x.id===q.model}"><b>${esc(x.name)}</b><span>Sets the labor levels and parts markup</span></button>`).join('')||'<div class="muted">No pricing models found.</div>'}</div></div>
+    <div class="panel pad"><h3>3. Repair labor</h3>
       <p class="muted" style="margin:0 0 8px">A repair is labor plus parts. The diagnostic fee is charged only when the customer does not go ahead.</p>
       ${tiers.length?`<div class="choices"><button class="choice" data-a="tier" data-id="" aria-pressed="${!q.tier}"><b>No repair</b><span>Diagnostic fee only</span></button>
         ${tiers.map(t=>`<button class="choice" data-a="tier" data-id="${t.id}" aria-pressed="${t.id===q.tier}"><b>${esc(t.name)}</b><span>${money(t.price)}</span></button>`).join('')}</div>`
       :`<div class="notice">No labor levels are set for ${esc(m?m.name:'this class')} yet. ${isAdmin()?'Add them under Prices, top right.':'Ask an admin to add them.'}</div>`}</div>
-    <div class="panel pad"><h3>3. Parts</h3>
+    <div class="panel pad"><h3>4. Parts</h3>
       ${q.parts.map(vPart).join('')||'<div class="muted" style="margin-bottom:10px">No parts on this job yet.</div>'}
       <div class="row" style="margin-top:6px"><button data-a="addpart">Add a part</button></div></div>
-    ${curTier()?`<div class="panel pad"><h3>4. Is the repair finished today?</h3>
+    ${curTier()?`<div class="panel pad"><h3>5. Is the repair finished today?</h3>
       <div class="choices"><button class="choice" data-a="sameday" data-v="0" aria-pressed="${!q.sameDay}"><b>Return visit needed</b><span>Collect a deposit today</span></button>
         <button class="choice" data-a="sameday" data-v="1" aria-pressed="${!!q.sameDay}"><b>Finished today</b><span>Collect the full amount</span></button></div></div>`:''}
     <div id="totals">${vTotals()}</div>
@@ -277,11 +316,17 @@ function dPrices(){
           <button class="small" data-a="deltier" data-id="${t.id}">${S.armed===t.id?'Tap again to delete':'Delete'}</button></div>`).join('')||'<div class="muted" style="margin-bottom:6px">None yet.</div>'}
         <form class="row" data-newtier="${m.id}"><input style="flex:2 1 160px" name="name" placeholder="Name, for example Minor repair" required maxlength="60">
           <input style="flex:1 1 90px" name="price" inputmode="decimal" placeholder="Price" required><button class="small" type="submit">Add</button></form></div>`}).join('')}
-    <p class="muted">Diagnostic fees and part markups are set in Part lookup, under Pricing models.</p></div>`}
+    <div><h3>Diagnostic fee by area</h3>
+      ${S.zones.map(z=>`<div class="row" style="margin-bottom:6px"><span style="flex:2 1 150px">${esc(z.name)}</span>
+        <input style="flex:1 1 80px" data-z="${z.id}" data-zk="fee" value="${esc(z.fee)}" inputmode="decimal" aria-label="Diagnostic fee for ${esc(z.name)}">
+        <input style="flex:2 1 150px" data-z="${z.id}" data-zk="days" value="${esc(z.days||'')}" aria-label="Usual days for ${esc(z.name)}"></div>`).join('')||'<div class="muted">No areas are set up yet.</div>'}
+      <p class="muted">Each area has a fee and its usual days. The outlines come from the service area map; ask for a new import after the map changes.</p></div>
+    <p class="muted">Part markups are set in Part lookup, under Pricing models.</p></div>`}
 
 function summaryText(){
   const t=totals(),m=curModel(),tr=curTier(),L=[];
   L.push(`Quote (${m?m.name:'no class chosen'})`);
+  if(curZone())L.push(`Area: ${curZone().name}`);
   if(tr)L.push(`Labor, ${tr.name}: ${money(t.labor)}`);else L.push(`No repair. Diagnostic fee: ${money(t.svc)}`);
   S.q.parts.forEach(p=>{const pp=partPrice(p,m),q=Math.max(1,parseInt(p.qty,10)||1);
     L.push(`Part ${p.pn||'(no number)'}${p.desc?' '+p.desc:''}: ${pp.each==null?'NOT PRICED':(q>1?q+' x '+money(pp.each)+' = ':'')+money(pp.each*q)}`)});
@@ -298,12 +343,15 @@ const A={
   signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   model:d=>{S.q.model=d.id;S.q.tier='';S.q.parts.forEach(p=>{p.note=p.note&&p.sell===''?p.note:p.note});saveDraft();render()},
   tier:d=>{S.q.tier=d.id;saveDraft();render()},
+  zone:d=>{S.q.zone=d.id;S.znote='';saveDraft();render()},
+  findzone:()=>findZone(),
+  herezone:()=>hereZone(),
   sameday:d=>{S.q.sameDay=d.v==='1';saveDraft();render()},
   addpart:()=>{S.q.parts.push(blankPart());saveDraft();render();const n=document.querySelector(`[data-k="p${S.q.parts.length-1}.pn"]`);if(n)n.focus()},
   delpart:d=>{S.q.parts.splice(Number(d.i),1);saveDraft();render()},
   lookup:d=>lookupPart(Number(d.i)),
   armreset:()=>{S.armed='reset';render();setTimeout(()=>{if(S.armed==='reset'){S.armed=null;render()}},5000)},
-  reset:()=>{S.armed=null;const model=S.q.model;S.q=blankQuote();S.q.model=model;saveDraft();render();window.scrollTo(0,0)},
+  reset:()=>{S.armed=null;const model=S.q.model;S.q=blankQuote();S.q.model=model;S.zaddr='';S.znote='';saveDraft();render();window.scrollTo(0,0)},
   copy:async()=>{const txt=summaryText();try{await navigator.clipboard.writeText(txt);toast('Summary copied. Paste it into the job notes.')}catch(e){window.prompt('Copy this summary:',txt)}},
   prices:()=>{S.dlg='prices';renderDlg()},
   close:()=>{S.dlg=null;$('dlg').close()},
@@ -314,7 +362,9 @@ const A={
 };
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el||!A[el.dataset.a])return;e.preventDefault();A[el.dataset.a](el.dataset,el)});
 /* Typing updates the numbers in place, without redrawing the field being typed in. */
-document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.k;if(!k)return;
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='zaddr'){e.preventDefault();findZone()}});
+document.addEventListener('input',e=>{if(e.target.id==='zaddr'){S.zaddr=e.target.value;return}
+  const k=e.target.dataset&&e.target.dataset.k;if(!k)return;
   const m=k.match(/^p(\d+)\.(\w+)$/);
   if(m){const p=S.q.parts[Number(m[1])];if(!p)return;p[m[2]]=e.target.value;if(m[2]==='pn')p.note='';
     const f=$('pf'+m[1]);if(f)f.innerHTML=partFoot(p,partPrice(p,curModel()))}
@@ -324,11 +374,18 @@ document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset
 document.addEventListener('change',async e=>{const el=e.target,d=el.dataset||{};
   if(d.k){if(/\.pn$/.test(d.k)){const p=S.q.parts[Number(d.k.match(/\d+/)[0])];if(p)p.pn=normPn(p.pn)}render();return}
   if(d.st){const pct=numOrNull(el.value);
+    if(d.st==='tax_rate'&&pct!=null&&pct>0&&pct<1){toast('Enter the tax as a percentage: 8.25 for 8.25%.',true);renderDlg();return}
     if(d.st==='tax_rate'?(el.value.trim()!==''&&(pct==null||pct>=20)):(pct==null||pct>(d.st==='deposit_pct'?100:50))){toast('Enter a percentage, like 8.25.',true);renderDlg();return}
     const val=el.value.trim()===''?null:Math.round(pct*1000)/100000;
     const {error}=await SB.from('pricing_settings').update({[d.st]:val}).eq('id',true);
     if(error){toast(error.message,true);renderDlg();return}
     S.settings[d.st]=val;if(d.st==='tax_rate')S.q.tax='';toast('Saved.');renderDlg();render();return}
+  if(d.z){const z=S.zones.find(x=>x.id===d.z);if(!z)return;
+    const val=d.zk==='fee'?numOrNull(el.value):el.value.trim();
+    if(val==null){toast('Enter a fee, like 125.',true);renderDlg();return}
+    const {error}=await SB.from('service_zones').update({[d.zk]:val}).eq('id',z.id);
+    if(error){toast(error.message,true);renderDlg();return}
+    z[d.zk]=val;toast('Saved.');renderDlg();render();return}
   if(d.t){const t=S.tiers.find(x=>x.id===d.t);if(!t)return;
     const val=d.tk==='price'?numOrNull(el.value):el.value.trim();
     if(val==null||val===''){toast(d.tk==='price'?'Enter a price, like 185.00.':'The level needs a name.',true);renderDlg();return}
