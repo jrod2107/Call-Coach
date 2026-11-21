@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Label printer test</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f6f7f9;color:#1b1f24;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+@media (prefers-color-scheme:dark){body{background:#12161b;color:#e6e9ed}.card{background:#1b2027;border-color:#2c333c}button{background:#242b34;color:#e6e9ed;border-color:#3a434e}pre{background:#0d1014;border-color:#2c333c}}
+.wrap{max-width:720px;margin:0 auto;padding:16px 16px 60px}
+h1{font-size:20px;margin:0 0 4px}
+h2{font-size:15px;margin:0 0 8px}
+p{margin:6px 0}
+.muted{color:#6b7480}
+.card{background:#fff;border:1px solid #d9dde3;border-radius:10px;padding:14px;margin:12px 0}
+button{font:inherit;font-weight:600;min-height:44px;padding:8px 14px;border:1px solid #c3c9d1;border-radius:8px;background:#fff;color:#1b1f24;cursor:pointer;margin:4px 6px 4px 0}
+button.primary{background:#1f5fbf;border-color:#1f5fbf;color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+label{display:block;margin:8px 0;min-height:32px}
+input[type=number]{font:inherit;width:90px;padding:6px}
+pre{background:#fff;border:1px solid #d9dde3;border-radius:8px;padding:10px;margin:8px 0;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:13px/1.4 ui-monospace,Menlo,Consolas,monospace}
+.warn{color:#a15c00}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Label printer test</h1>
+<p class="muted">A temporary page to check whether a phone can print to a Bluetooth label printer straight from a web page. It holds no customer data and saves nothing.</p>
+
+<div class="card">
+  <h2>Before you start</h2>
+  <p>1. Use <b>Chrome on an Android phone</b>. Other browsers, and iPhones, cannot do this.</p>
+  <p>2. Turn the printer on, with a 4x6 label roll loaded. Turn on Bluetooth and Location on the phone.</p>
+  <p>3. Close the printer's own app, because it can hold the printer's Bluetooth connection.</p>
+  <p id="support" class="warn"></p>
+</div>
+
+<div class="card">
+  <h2>Step 1: Connect</h2>
+  <button class="primary" id="connect">Connect to the printer</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <p class="muted">Pick the printer (its name may start with Labeer or Y43, or show only as letters and numbers) from the list Chrome shows.</p>
+  <div id="charBox" hidden>
+    <h2 style="margin-top:12px">Where to send the label</h2>
+    <div id="chars"></div>
+    <label>Bytes sent at a time (lower is safer): <input type="number" id="chunk" value="20" min="20" max="512"></label>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Step 2: Send a test label</h2>
+  <p>Try them in this order. After each one, tell me what the printer did: nothing, garbled text, a blank label, or a good label.</p>
+  <button id="tspl" disabled>Test label (TSPL, inches)</button>
+  <button id="tsplmm" disabled>Test label (TSPL, mm)</button>
+  <button id="escpos" disabled>Test label (ESC/POS)</button>
+  <button id="cpcl" disabled>Test label (CPCL)</button>
+  <button id="zpl" disabled>Test label (ZPL)</button>
+  <p class="muted">Each test uses one 4x6 label. If it gets the size wrong, the printer may feed a few blank labels.</p>
+</div>
+
+<div class="card">
+  <h2>What happened</h2>
+  <pre id="log" aria-live="polite"></pre>
+  <button id="copy">Copy this log</button>
+  <p class="muted">Paste the log back to me. It holds only the printer's Bluetooth details, no customer information.</p>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const logEl=$('log');
+const log=m=>{logEl.textContent+=m+'\n';logEl.scrollTop=logEl.scrollHeight;};
+const uuid16=n=>'0000'+n.toString(16).padStart(4,'0')+'-0000-1000-8000-00805f9b34fb';
+
+/* Chrome only shows services we name in advance, so ask for the ones label printers commonly use. */
+const SERVICES=[];
+[[0xFF00,0xFF1F],[0xFFB0,0xFFFF],[0xFEE0,0xFEEF],[0xAE00,0xAE3F],[0xAF00,0xAF3F],[0xFD00,0xFD0F],[0x18F0,0x18F0]]
+  .forEach(([a,b])=>{for(let n=a;n<=b;n++)SERVICES.push(uuid16(n));});
+SERVICES.push('e7810a71-73ae-499d-8c15-faa9aef0c3f2','49535343-fe7d-4ae5-8fa9-9fafd205e455');
+
+let dev=null,target=null;
+const enc=new TextEncoder();
+const cmd=s=>enc.encode(s.replace(/\n/g,'\r\n'));
+
+const TESTS={
+  tspl:()=>cmd('SIZE 4,6\nGAP 0.12,0\nDIRECTION 1\nCLS\nBOX 8,8,804,1210,4\nTEXT 40,40,"3",0,2,2,"LABEL TEST"\nTEXT 40,120,"3",0,1,1,"If you can read this, it works"\nBARCODE 40,200,"128",120,1,0,3,3,"S01001"\nPRINT 1,1\n'),
+  tsplmm:()=>cmd('SIZE 101.6 mm,152.4 mm\nGAP 3 mm,0 mm\nDIRECTION 1\nCLS\nBOX 8,8,804,1210,4\nTEXT 40,40,"3",0,2,2,"LABEL TEST"\nTEXT 40,120,"3",0,1,1,"If you can read this, it works"\nBARCODE 40,200,"128",120,1,0,3,3,"S01001"\nPRINT 1,1\n'),
+  escpos:()=>{const a=[0x1B,0x40,...enc.encode('LABEL TEST\nIf you can read this, it works\nS01001\n\n\n'),0x0C];return new Uint8Array(a);},
+  cpcl:()=>cmd('! 0 200 200 1218 1\nPAGE-WIDTH 812\nTEXT 4 0 40 40 LABEL TEST\nTEXT 4 0 40 120 If you can read this, it works\nBARCODE 128 1 1 100 40 200 S01001\nFORM\nPRINT\n'),
+  zpl:()=>enc.encode('^XA^PW812^LL1218^FO40,40^A0N,60,60^FDLABEL TEST^FS^FO40,120^A0N,32,32^FDIf you can read this, it works^FS^FO40,200^BCN,120,Y,N,N^FDS01001^FS^XZ')
+};
+
+function setReady(on){['tspl','tsplmm','escpos','cpcl','zpl'].forEach(k=>$(k).disabled=!on);$('disconnect').disabled=!dev;}
+
+if(!navigator.bluetooth){$('support').textContent='This browser cannot use Bluetooth from a web page. Open this page in Chrome on an Android phone.';$('connect').disabled=true;}
+
+$('connect').onclick=async()=>{
+  try{
+    log('Choose the printer from the list that appears.');
+    dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:SERVICES});
+    log('Chosen: '+(dev.name||'(no name)'));
+    dev.addEventListener('gattserverdisconnected',()=>{log('The printer disconnected.');target=null;setReady(false);});
+    const server=await dev.gatt.connect();
+    log('Connected. Looking for ways to send data…');
+    const services=await server.getPrimaryServices();
+    if(!services.length){
+      log('Found no readable services. This printer most likely uses "classic" Bluetooth, which Chrome cannot use from a web page.');
+      $('disconnect').disabled=false;return;
+    }
+    const box=$('chars');box.textContent='';
+    let first=true,count=0;
+    for(const s of services){
+      log('Service '+s.uuid);
+      let chars=[];
+      try{chars=await s.getCharacteristics();}catch(e){log('  could not read: '+e.name+': '+e.message);continue;}
+      for(const c of chars){
+        const p=c.properties;
+        const flags=['write','writeWithoutResponse','notify','read'].filter(k=>p[k]).join(', ');
+        log('  Characteristic '+c.uuid+'  ('+flags+')');
+        if(p.write||p.writeWithoutResponse){
+          count++;
+          const l=document.createElement('label');
+          const r=document.createElement('input');r.type='radio';r.name='ch';r.checked=first;
+          r.onchange=()=>{target=c;log('Selected '+c.uuid);};
+          if(first){target=c;first=false;}
+          l.append(r,' '+c.uuid+' ('+flags+')');box.append(l);
+        }
+      }
+    }
+    if(!count){log('Found services but none accept data. A web page cannot print to this printer.');}
+    else{$('charBox').hidden=false;setReady(true);log('Ready. Pick a test in Step 2.');}
+    $('disconnect').disabled=false;
+  }catch(e){log('Failed: '+e.name+': '+e.message);}
+};
+
+$('disconnect').onclick=()=>{try{if(dev&&dev.gatt.connected)dev.gatt.disconnect();}catch(e){}dev=null;target=null;setReady(false);log('Disconnected.');};
+
+async function send(name){
+  if(!target){log('Connect first.');return;}
+  const bytes=TESTS[name]();
+  const size=Math.max(20,parseInt($('chunk').value)||20);
+  const noResp=!!target.properties.writeWithoutResponse;
+  log('Sending '+name+': '+bytes.length+' bytes, '+size+' at a time, '+(noResp?'without':'with')+' response…');
+  try{
+    for(let i=0;i<bytes.length;i+=size){
+      const part=bytes.slice(i,i+size);
+      if(noResp)await target.writeValueWithoutResponse(part);else await target.writeValueWithResponse(part);
+      await new Promise(r=>setTimeout(r,25));
+    }
+    log('Sent. Watch the printer.');
+  }catch(e){log('Send failed: '+e.name+': '+e.message);}
+}
+['tspl','tsplmm','escpos','cpcl','zpl'].forEach(k=>$(k).onclick=()=>send(k));
+
+$('copy').onclick=async()=>{
+  try{await navigator.clipboard.writeText(logEl.textContent);log('Log copied.');}
+  catch(e){log('Could not copy. Press and hold the log text to select it.');}
+};
+log('Page loaded. Browser Bluetooth support: '+(navigator.bluetooth?'yes':'no'));
+</script>
+</body>
+</html>
