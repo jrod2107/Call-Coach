@@ -90,6 +90,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="../labels.js"></script>
 <script src="../config.js"></script>
 <script>
 /* Parts desk v1. Tables: parts, vendors, part_events (see supabase/migrations/*parts_desk_v1.sql).
@@ -107,7 +108,7 @@ const daysUntil=iso=>Math.round((new Date(iso+'T12:00:00')-new Date(today()+'T12
 const lastName=n=>String(n||'').trim().split(/\s+/).pop().replace(/[^A-Za-z0-9]/g,'');
 
 const TABS=[['need','Need to order',['need_to_order']],['ordered','On order',['ordered','backordered']],['shipped','Shipped',['shipped']],
-  ['received','Received',['received']],['triage','Triage to decide',[],p=>!!triageDue(p)],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled','stocked']]];
+  ['received','Received',['received']],['labels','Labels to print',[],()=>false],['triage','Triage to decide',[],p=>!!triageDue(p)],['returns','Returns awaiting credit',['returned']],['done','Finished',['installed','credited','cancelled','stocked']]];
 const LABEL={need_to_order:'Need to order',ordered:'Ordered',backordered:'Backordered, no ETA',shipped:'Shipped',received:'Received',installed:'Installed',returned:'Not used, awaiting credit',credited:'Credit received',cancelled:'Cancelled',stocked:'Moved to stock'};
 const TONE={need_to_order:'warn',ordered:'info',backordered:'bad',shipped:'info',received:'good',returned:'warn'};
 const S={session:null,me:null,parts:[],vendors:[],locs:[],tab:'need',q:'',loading:false,err:'',dlg:null,req:null,events:[],pick:{}};
@@ -138,6 +139,7 @@ async function load(){
   const l=await SB.from('stock_locations').select('id,name,kind,active').order('name');S.locs=l.data||[];
   S.loading=false;
   if(p.error||v.error)S.err=(p.error||v.error).message;else{S.err='';S.parts=p.data||[];S.vendors=(v.data||[]).sort((a,b)=>isOther(a)-isOther(b)||a.name.localeCompare(b.name))}
+  await Labels.load();
   render();if(S.dlg)renderDlg();
 }
 const locName=id=>((S.locs||[]).find(l=>l.id===id)||{}).name||'';
@@ -229,9 +231,9 @@ function vMain(){
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad">Could not load parts: ${esc(S.err)}</div>`:''}
-   <div class="tabs">${TABS.map(t=>{const [k,l]=t,n=S.parts.filter(p=>inTab(t,p)).length;
-     return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['need','returns','triage'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
-   <div class="panel">${rows.length?`<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>Job</th><th>Vendor and PO</th><th>Where it stands</th><th></th></tr></thead><tbody>
+   <div class="tabs">${TABS.map(t=>{const [k,l]=t,n=k==='labels'?Labels.count():S.parts.filter(p=>inTab(t,p)).length;
+     return `<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${n&&['need','returns','triage','labels'].includes(k)?' hot':''}">${n}</span></button>`}).join('')}</div>
+   <div class="panel">${S.tab==='labels'?Labels.view():rows.length?`<div class="scroll"><table><thead><tr><th>Tag</th><th>Part</th><th>Job</th><th>Vendor and PO</th><th>Where it stands</th><th></th></tr></thead><tbody>
     ${rows.map(p=>`<tr data-a="open" data-id="${p.id}">
       <td class="mono">${esc(p.tag)}</td>
       <td><span class="mono">${esc(p.part_number)}</span>${p.qty>1?` × ${p.qty}`:''}<br><span class="muted">${esc(p.description)}</span></td>
@@ -266,7 +268,7 @@ function dPart(p){
    <div><h3>History</h3><ul class="hist">${S.events.length?S.events.map(e=>`<li>${fmtDate(e.at)} · ${esc(LABEL[e.to_status]||e.to_status)}${e.by_name?' · '+esc(e.by_name):''}</li>`).join(''):'<li class="muted">Loading…</li>'}</ul></div>
   </div>
   <div class="dfoot">${mgr()&&!['cancelled','credited','installed','stocked'].includes(p.status)?`<button class="ghost" data-a="cancel" data-id="${p.id}">Cancel this part</button>`:''}<span class="grow"></span>
-   <button data-a="print" data-id="${p.id}">Print tag</button><button class="primary" data-a="save" data-id="${p.id}">Save</button></div>`}
+   <button data-a="print" data-id="${p.id}">Print tag</button>${o&&p.status==='received'?`<button data-a="tolabels" data-id="${p.id}">${p.label_printed_at?'Print label again':'Print label'}</button>`:''}<button class="primary" data-a="save" data-id="${p.id}">Save</button></div>`}
 function dRequest(){
   const r=S.req,o=office();
   const f=(label,k,cls,attrs)=>`<label class="fld ${cls||''}"><span>${label}</span><input id="rq-${k}" data-req="${k}" value="${esc(r[k])}" ${attrs||''}></label>`;
@@ -335,7 +337,8 @@ function printTag(p){
 
 /* ---------- actions ---------- */
 const A={
-  tab:d=>{S.tab=d.t;render()},
+  tab:d=>{S.tab=d.t;if(d.t==='labels')Labels.selectAll();render()},
+  tolabels:async d=>{if(await Labels.reprint('part',d.id)){S.tab='labels';closeDlg();render()}},
   refresh:()=>load(),
   signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   open:d=>openPart(d.id),
@@ -437,6 +440,7 @@ function render(){
 }
 (async function boot(){
   if(!SB){render();return}
+  Labels.init({SB,me:()=>S.me,rerender:()=>render(),toast,query:()=>S.q,loc:()=>'',loading:()=>S.loading});
   const {data:{session}}=await SB.auth.getSession();S.session=session;
   SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
   if(session)await whoami();
