@@ -336,7 +336,7 @@ function dUnit(u){
     <p class="muted" style="margin:6px 0 0">Scanned in ${fmtDate(u.created_at)}${u.added_by_name?' by '+esc(u.added_by_name):''}.</p></div>
   </div>
   <div class="dfoot">${ed&&live?`<button class="ghost" data-a="remove" data-id="${u.id}">Remove from stock</button>`:''}<span class="grow"></span>
-   <button data-a="print" data-id="${u.id}">Print tag</button>${live?`<button class="primary" data-a="saveunit" data-id="${u.id}">Save</button>`:''}</div>`}
+   <button data-a="print" data-id="${u.id}">Print tag</button>${layoutSel()}<button data-a="share" data-id="${u.id}">Send to label printer</button>${live?`<button class="primary" data-a="saveunit" data-id="${u.id}">Save</button>`:''}</div>`}
 function dScanShell(){return `<div class="dhead"><h2>Scan parts in</h2><span class="grow"></span><button class="ghost small" data-a="close">Close</button></div>
   <div class="dbody"><div id="reader"></div><div id="scanform" style="display:flex;flex-direction:column;gap:12px"></div></div>`}
 function scanForm(){
@@ -348,7 +348,7 @@ function scanForm(){
    <input id="sc-label" type="file" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
    ${s.fromLabel&&s.pn?'<div class="notice info">Read from the label. Check the part number and name before adding.</div>':''}
    ${s.labelErr?`<div class="notice bad">${esc(s.labelErr)}</div>`:''}
-   ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button></div>`:''}
+   ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button> ${layoutSel()} <button class="small" data-a="sharelast">Send to label printer</button></div>`:''}
    <div class="fields">
     ${f('Part number *','pn','class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false"','wide')}
     ${s.pn?`<div class="fld wide">${known?'<span class="notice info" style="font-weight:400;font-size:14px">This part number is already known, so its name and brand are filled in.</span>':'<span class="notice" style="font-weight:400;font-size:14px">New part number. Type what it is once and it will be remembered.</span>'}</div>`:''}
@@ -479,7 +479,7 @@ function dInvoice(){
      <div class="notice good"><b>${r.jobs.length}</b> job part${r.jobs.length===1?'':'s'} received${r.jobs.length?': '+r.jobs.map(p=>esc(p.tag)+' for job #'+esc(p.job_number)).join(', '):''}.<br>
       <b>${r.stock.length}</b> part${r.stock.length===1?'':'s'} added to stock at ${esc(locName(v.loc))}${tags.length?' ('+esc(tags.length>1?tags[0]+' to '+tags[tags.length-1]:tags[0])+')':''}.</div>
      ${r.jobs.length?'<p class="muted" style="margin:0">Job parts are now under Received on the Parts desk, where their tags can be printed.</p>':''}</div>
-    <div class="dfoot">${r.jobs.length?'<a href="../parts/">Open Parts desk</a>':''}<span class="grow"></span>${r.stock.length?'<button data-a="invprint">Print stock tags</button>':''}<button class="primary" data-a="close">Done</button></div>`}
+    <div class="dfoot">${r.jobs.length?'<a href="../parts/">Open Parts desk</a>':''}<span class="grow"></span>${r.stock.length?'<button data-a="invprint">Print stock tags</button>${layoutSel()}<button data-a="invshare">Send tags to label printer</button>':''}<button class="primary" data-a="close">Done</button></div>`}
   const h=v.head,saving=v.step==='saving',todo=v.lines.filter(l=>!l.dest).length;
   return head+`<div class="dbody">
     <div><b>${esc(h.vendor||'Vendor not read')}</b> · Invoice ${esc(h.invoice_number||'not read')}${h.order_number?' · Order '+esc(h.order_number):''}${h.po_number?' · PO '+esc(h.po_number):''}</div>
@@ -522,6 +522,95 @@ function printTags(list){
    <div class="l4">${esc(locName(u.location_id))}${u.bin?' · '+esc(u.bin):''} · ${esc(COND[u.condition])} · ${fmtDate(u.created_at)}</div></div>`}).join('');
   list.forEach((u,n)=>{try{window.JsBarcode('#bc'+n,u.tag,{format:'CODE128',displayValue:false,margin:0,height:40,width:1.6})}catch(e){}});
   window.print();
+}
+
+/* ---------- tags as a 4 x 6 inch PDF, handed to the label printer's own app ----------
+   The printer is Bluetooth-only, so the phone's print menu cannot see it. Instead we build a PDF (one, two or three
+   tags per 4 x 6 label, stacked top to bottom) and open the phone's Share menu,
+   where the printer's app takes the file. Where sharing is not available the file is downloaded instead. */
+const TAG_LAYOUT_KEY='tagLayout';
+const tagLayout=()=>{try{const v=localStorage.getItem(TAG_LAYOUT_KEY);return v==='1'||v==='2'?v:'3'}catch(e){return '3'}};
+const layoutSel=()=>`<select id="tag-layout" aria-label="Tags per label" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option></select>`;
+/* Width of each character, in thousandths of the font size, for the PDF's built-in Helvetica and Helvetica-Bold (from space to ~). */
+const HELV=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+const HELVB=[278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+const pdfText=s=>String(s==null?'':s).replace(/·/g,'-').replace(/[^\x20-\x7e]/g,'-');
+const pdfEsc=s=>s.replace(/[\\()]/g,'\\$&');
+const textW=(s,size,bold)=>{const t=bold?HELVB:HELV;let w=0;for(const ch of s){const v=t[ch.charCodeAt(0)-32];w+=(v==null?556:v)}return w*size/1000};
+const fitText=(s,size,bold,maxW)=>{s=pdfText(s);if(textW(s,size,bold)<=maxW)return s;while(s.length>1&&textW(s+'..',size,bold)>maxW)s=s.slice(0,-1);return s.trim()+'..'};
+function barBits(text){
+  const o={};
+  try{window.JsBarcode(o,text,{format:'CODE128'})}catch(e){return ''}
+  return (o.encodings&&o.encodings[0]&&o.encodings[0].data)||'';
+}
+/* One tag drawn into the box with its lower-left corner at (x0,yb). f scales the type: 1 for a 4 x 2 slot. */
+function tagPdf(u,x0,yb,w,h,f){
+  const c=catOf(u.part_number),m=10,L=x0+m,R=x0+w-m,aw=w-2*m,out=[];
+  const T=(font,size,x,y,s)=>out.push('BT /'+font+' '+size.toFixed(1)+' Tf '+x.toFixed(1)+' '+y.toFixed(1)+' Td ('+pdfEsc(s)+') Tj ET');
+  let y=yb+h-10*f-18*f;
+  const tag=pdfText(u.tag);T('F2',18*f,L,y,tag);
+  const bsz=11*f,bw=aw-textW(tag,18*f,true)-8*f;
+  const brand=bw>0?fitText(c.brand,bsz,true,bw):'';
+  if(brand)T('F2',bsz,R-textW(brand,bsz,true),y,brand);
+  y-=17*f;
+  const psz=14*f;let pn=pdfText(u.part_number);while(pn.length>1&&pn.length*0.6*psz>aw)pn=pn.slice(0,-1);
+  T('F3',psz,L,y,pn);
+  y-=13*f;
+  T('F1',10*f,L,y,fitText(c.description,10*f,false,aw));
+  y-=6*f;
+  const bits=barBits(u.tag),bh=42*f;
+  if(bits){
+    /* Whole printer dots per bar width (203 dots per inch) so the bars stay sharp and scan reliably. */
+    const mw=Math.max(1,Math.floor(aw*203/72/bits.length))*72/203,bx=x0+(w-mw*bits.length)/2;
+    let r='',i=0;
+    while(i<bits.length){if(bits[i]==='1'){let j=i;while(j<bits.length&&bits[j]==='1')j++;r+=(bx+i*mw).toFixed(2)+' '+(y-bh).toFixed(2)+' '+((j-i)*mw).toFixed(2)+' '+bh.toFixed(2)+' re\n';i=j}else i++}
+    out.push(r+'f');
+  }
+  y-=bh+11*f;
+  const foot=[locName(u.location_id)+(u.bin?' / '+u.bin:''),COND[u.condition],fmtDate(u.created_at)].filter(Boolean).join(' | ');
+  T('F1',8*f,L,y,fitText(foot,8*f,false,aw));
+  return out.join('\n')+'\n';
+}
+function buildTagsPdf(list,per){
+  const W=288,H=432,slots=per===1||per===2?per:3,sh=H/slots,f={1:1.5,2:1.5,3:1}[slots],pages=[];
+  for(let i=0;i<list.length;i+=slots){
+    let c='';
+    for(let s=0;s<slots&&i+s<list.length;s++)c+=tagPdf(list[i+s],0,H-(s+1)*sh,W,sh,f);
+    /* Light dashed lines to cut along between the tags. */
+    if(slots>1)c+='q 0.5 w 0.6 G [4 3] 0 d '+Array.from({length:slots-1},(_,k)=>'0 '+(H-(k+1)*sh)+' m '+W+' '+(H-(k+1)*sh)+' l S').join(' ')+' Q\n';
+    pages.push(c);
+  }
+  const objs=['<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids ['+pages.map((_,i)=>(6+2*i)+' 0 R').join(' ')+'] /Count '+pages.length+' >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>'];
+  pages.forEach((c,i)=>{
+    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+W+' '+H+'] /Contents '+(7+2*i)+' 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> >>');
+    objs.push('<< /Length '+c.length+' >>\nstream\n'+c+'endstream');
+  });
+  let out='%PDF-1.4\n';const offs=[];
+  objs.forEach((o,i)=>{offs.push(out.length);out+=(i+1)+' 0 obj\n'+o+'\nendobj\n'});
+  const xref=out.length;
+  out+='xref\n0 '+(objs.length+1)+'\n0000000000 65535 f \n'+offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('');
+  out+='trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
+  return new Blob([out],{type:'application/pdf'});
+}
+async function shareTags(list){
+  list=list.filter(Boolean);if(!list.length)return;
+  const sel=$('tag-layout'),per=sel?sel.value:tagLayout();
+  try{localStorage.setItem(TAG_LAYOUT_KEY,per)}catch(e){}
+  let blob;try{blob=buildTagsPdf(list,+per)}catch(e){toast('Could not make the tags: '+e.message,true);return}
+  const name='tags-'+list[0].tag+(list.length>1?'-and-'+(list.length-1)+'-more':'')+'.pdf';
+  const file=new File([blob],name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Stock tags'});return}
+    catch(e){if(e.name==='AbortError')return}
+  }
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  toast('Saved '+name+'. Open it from the label printer app.');
 }
 
 /* ---------- camera ---------- */
@@ -606,6 +695,7 @@ const A={
   invsave:()=>invSave(),
   invback:()=>{Object.assign(S.inv,{step:'pick',files:[],lines:[],err:'',dup:''});renderDlg()},
   invprint:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)printTags(r.stock)},
+  invshare:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)shareTags(r.stock)},
   camstart:()=>camStart(),
   labelpick:()=>{const i=$('sc-label');if(i)i.click()},
   camstop:async()=>{await camStop();renderDlg()},
@@ -632,6 +722,8 @@ const A={
   },
   printlast:()=>{const l=S.scan&&S.scan.last;if(l)printTags(l.ids.map(item).filter(Boolean))},
   print:d=>printTags([item(d.id)]),
+  share:d=>shareTags([item(d.id)]),
+  sharelast:()=>{const l=S.scan&&S.scan.last;if(l)shareTags(l.ids.map(item).filter(Boolean))},
   hold:async d=>{const job=jobFrom('u-job');if(!job){toast('Type the job number first.',true);return}
     await updItem(d.id,['in_stock'],{status:'held',held_job:job},`Held for job #${job}. Nobody else can take it now.`)},
   release:async d=>{await updItem(d.id,['held'],{status:'in_stock'},'Hold released. It is available again.')},
