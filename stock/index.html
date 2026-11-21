@@ -121,8 +121,8 @@ const ACTIVE=['in_stock','held'];
 const PURPOSE={keep:'Keep in stock',ebay:'Sell on eBay',undecided:'Not decided'};
 const COND={new:'New',open_box:'Open box',used:'Used'};
 const STATUS={in_stock:'In stock',held:'Held',used:'Used on a job',sold:'Sold',removed:'Removed'};
-const TABS=[['stock','In stock'],['undecided','Not decided'],['ebay','eBay'],['restock','Restock'],['history','History']];
-const S={session:null,me:null,items:[],hist:[],cat:{},plan:[],locs:[],tab:'stock',q:'',loc:'',loading:false,err:'',dlg:null,scan:null,events:[],cam:null};
+const TABS=[['stock','In stock'],['undecided','Not decided'],['ebay','eBay'],['restock','Restock'],['labels','Labels to print'],['history','History']];
+const S={session:null,me:null,items:[],hist:[],cat:{},plan:[],locs:[],tab:'stock',lsel:null,lask:null,q:'',loc:'',loading:false,err:'',dlg:null,scan:null,events:[],cam:null};
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const mgr=()=>!!S.me&&(S.me.role==='admin'||(S.me.role==='csr'&&!!S.me.manager));
 const editor=()=>!!S.me&&['csr','admin','stock'].includes(S.me.role);   /* may change what a part is, its cost and its eBay details */
@@ -261,10 +261,29 @@ function tHistory(){
      <td>${i.status==='used'?'Used on job #'+esc(i.used_job):i.status==='sold'?'Sold'+(i.sold_price!=null?' for '+money(i.sold_price):''):'Removed from stock'}</td>
      <td>${fmtDate(i.used_on||i.sold_on||i.updated_at)}</td></tr>`).join('')}</tbody></table></div>`;
 }
+/* Tags whose labels have not been printed yet. New parts start here; "Mark as printed" takes them off. */
+function pendingLabels(){
+  const q=S.q.trim().toLowerCase();
+  return S.items.filter(i=>!i.label_printed_at&&locOK(i)&&
+    (!q||[i.part_number,catOf(i.part_number).description,catOf(i.part_number).brand,i.tag].join(' ').toLowerCase().includes(q)));
+}
+const labelChecked=i=>S.lsel?S.lsel.has(i.id):true;
+function tLabels(){
+  const rows=pendingLabels(),ed=editor(),picked=rows.filter(labelChecked),n=S.lask?S.lask.length:0;
+  const ask=n?`<div class="notice info" style="margin:12px">Did ${n===1?'the label':'the '+n+' labels'} come out of the printer? <button class="primary small" data-a="lyes">Yes, mark ${n===1?'it':'them'} printed</button> <button class="small" data-a="lno">Not yet, keep ${n===1?'it':'them'} in the list</button></div>`:'';
+  if(!rows.length)return ask+`<div class="empty">${S.loading?'Loading…':'No labels are waiting to be printed. Parts you scan in will show up here.'}</div>`;
+  const bar=ed?`<div class="row" style="padding:12px;align-items:center;flex-wrap:wrap"><span><b>${picked.length}</b> of ${rows.length} selected</span>
+    <button class="small" data-a="lall">Select all</button><button class="small" data-a="lnone">Select none</button><span class="grow"></span>
+    ${layoutSel()}<button class="primary" data-a="lsend" ${picked.length?'':'disabled'}>Send to label printer</button>
+    <button data-a="lmark" ${picked.length?'':'disabled'}>Mark as printed</button></div>`
+   :`<div class="notice info" style="margin:12px">These tags are waiting to be printed. The office and the stock helper print them.</div>`;
+  return ask+bar+`<div class="scroll"><table><thead><tr>${ed?'<th></th>':''}<th>Tag</th><th>Part</th><th>Where</th><th>Added</th></tr></thead><tbody>
+   ${rows.map(i=>`<tr>${ed?`<td><input type="checkbox" style="width:auto;min-width:24px;min-height:24px" data-lc="${i.id}" ${labelChecked(i)?'checked':''} aria-label="Select ${esc(i.tag)}"></td>`:''}<td class="mono">${esc(i.tag)}</td><td>${partCell(i.part_number)}</td><td>${esc(locName(i.location_id))}${i.bin?' · '+esc(i.bin):''}</td><td>${fmtDate(i.created_at)}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function vMain(){
   const cnt={stock:new Set(S.items.filter(i=>i.purpose==='keep').map(i=>i.part_number)).size,undecided:S.items.filter(i=>i.purpose==='undecided').length,
-    ebay:S.items.filter(i=>i.purpose==='ebay').length,restock:restockRows().filter(r=>r.need).length,history:S.hist.length};
-  const body={stock:tStock,undecided:tUndecided,ebay:tEbay,restock:tRestock,history:tHistory}[S.tab]();
+    ebay:S.items.filter(i=>i.purpose==='ebay').length,restock:restockRows().filter(r=>r.need).length,labels:S.items.filter(i=>!i.label_printed_at).length,history:S.hist.length};
+  const body={stock:tStock,undecided:tUndecided,ebay:tEbay,restock:tRestock,labels:tLabels,history:tHistory}[S.tab]();
   return `<header class="top"><h1>Stock</h1>
    <input id="q" type="search" placeholder="Search part, name, tag or job" value="${esc(S.q)}" aria-label="Search stock">
    <select id="locf" aria-label="Location"><option value="">All locations</option>${locOpts(S.loc)}</select>
@@ -274,7 +293,7 @@ function vMain(){
    <button data-a="refresh">${S.loading?'Loading…':'Refresh'}</button></header>
   <div class="wrap">
    ${S.err?`<div class="notice bad" style="margin-bottom:10px">Could not load stock: ${esc(S.err)}</div>`:''}
-   <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${cnt[k]&&['undecided','restock'].includes(k)?' hot':''}">${cnt[k]}</span></button>`).join('')}</div>
+   <div class="tabs">${TABS.map(([k,l])=>`<button aria-pressed="${S.tab===k}" data-a="tab" data-t="${k}">${l} <span class="n${cnt[k]&&['undecided','restock','labels'].includes(k)?' hot':''}">${cnt[k]}</span></button>`).join('')}</div>
    <div class="panel">${body}</div>
   </div>`}
 
@@ -348,7 +367,7 @@ function scanForm(){
    <input id="sc-label" type="file" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0" tabindex="-1" aria-hidden="true">
    ${s.fromLabel&&s.pn?'<div class="notice info">Read from the label. Check the part number and name before adding.</div>':''}
    ${s.labelErr?`<div class="notice bad">${esc(s.labelErr)}</div>`:''}
-   ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button> ${layoutSel()} <button class="small" data-a="sharelast">Send to label printer</button></div>`:''}
+   ${s.last?`<div class="notice good">${esc(s.last.msg)} <button class="small" data-a="printlast" style="margin-left:6px">Print ${s.last.ids.length===1?'its tag':s.last.ids.length+' tags'}</button> <button class="small" data-a="lgo" data-ids="${s.last.ids.join(',')}">Print on label printer</button></div>`:''}
    <div class="fields">
     ${f('Part number *','pn','class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false"','wide')}
     ${s.pn?`<div class="fld wide">${known?'<span class="notice info" style="font-weight:400;font-size:14px">This part number is already known, so its name and brand are filled in.</span>':'<span class="notice" style="font-weight:400;font-size:14px">New part number. Type what it is once and it will be remembered.</span>'}</div>`:''}
@@ -479,7 +498,7 @@ function dInvoice(){
      <div class="notice good"><b>${r.jobs.length}</b> job part${r.jobs.length===1?'':'s'} received${r.jobs.length?': '+r.jobs.map(p=>esc(p.tag)+' for job #'+esc(p.job_number)).join(', '):''}.<br>
       <b>${r.stock.length}</b> part${r.stock.length===1?'':'s'} added to stock at ${esc(locName(v.loc))}${tags.length?' ('+esc(tags.length>1?tags[0]+' to '+tags[tags.length-1]:tags[0])+')':''}.</div>
      ${r.jobs.length?'<p class="muted" style="margin:0">Job parts are now under Received on the Parts desk, where their tags can be printed.</p>':''}</div>
-    <div class="dfoot">${r.jobs.length?'<a href="../parts/">Open Parts desk</a>':''}<span class="grow"></span>${r.stock.length?'<button data-a="invprint">Print stock tags</button>${layoutSel()}<button data-a="invshare">Send tags to label printer</button>':''}<button class="primary" data-a="close">Done</button></div>`}
+    <div class="dfoot">${r.jobs.length?'<a href="../parts/">Open Parts desk</a>':''}<span class="grow"></span>${r.stock.length?`<button data-a="invprint">Print stock tags</button><button data-a="lgo" data-ids="${r.stock.map(x=>x.id).join(',')}">Print on label printer</button>`:''}<button class="primary" data-a="close">Done</button></div>`}
   const h=v.head,saving=v.step==='saving',todo=v.lines.filter(l=>!l.dest).length;
   return head+`<div class="dbody">
     <div><b>${esc(h.vendor||'Vendor not read')}</b> · Invoice ${esc(h.invoice_number||'not read')}${h.order_number?' · Order '+esc(h.order_number):''}${h.po_number?' · PO '+esc(h.po_number):''}</div>
@@ -509,6 +528,12 @@ function renderDlg(){
   else{const u=S.dlg.unit&&item(S.dlg.unit);d.innerHTML=u?dUnit(u):dPart(S.dlg.pn)}
   if(!d.open)d.showModal();
 }
+async function markPrinted(ids){
+  if(!ids.length)return;
+  const {error}=await SB.from('stock_items').update({label_printed_at:new Date().toISOString()}).in('id',ids);
+  if(error){toast(error.message,true);return}
+  toast(ids.length===1?'Marked as printed.':ids.length+' labels marked as printed.');await load();
+}
 async function closeDlg(){await camStop();S.dlg=null;S.scan=null;S.inv=null;const d=$('dlg');d.innerHTML='';if(d.open)d.close()}
 async function openUnit(id){
   const u=item(id);if(!u)return;
@@ -529,8 +554,8 @@ function printTags(list){
    tags per 4 x 6 label, stacked top to bottom) and open the phone's Share menu,
    where the printer's app takes the file. Where sharing is not available the file is downloaded instead. */
 const TAG_LAYOUT_KEY='tagLayout';
-const tagLayout=()=>{try{const v=localStorage.getItem(TAG_LAYOUT_KEY);return v==='1'||v==='2'?v:'3'}catch(e){return '3'}};
-const layoutSel=()=>`<select id="tag-layout" aria-label="Tags per label" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option></select>`;
+const tagLayout=()=>{try{const v=localStorage.getItem(TAG_LAYOUT_KEY);return ['1','2','small'].includes(v)?v:'3'}catch(e){return '3'}};
+const layoutSel=()=>`<select id="tag-layout" aria-label="Tags per label" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option><option value="small" ${tagLayout()==='small'?'selected':''}>Small labels, 2.25 x 1.25 (1 per label)</option></select>`;
 /* Width of each character, in thousandths of the font size, for the PDF's built-in Helvetica and Helvetica-Bold (from space to ~). */
 const HELV=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
 const HELVB=[278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
@@ -543,22 +568,25 @@ function barBits(text){
   try{window.JsBarcode(o,text,{format:'CODE128'})}catch(e){return ''}
   return (o.encodings&&o.encodings[0]&&o.encodings[0].data)||'';
 }
-/* One tag drawn into the box with its lower-left corner at (x0,yb). f scales the type: 1 for a 4 x 2 slot. */
-function tagPdf(u,x0,yb,w,h,f){
-  const c=catOf(u.part_number),m=10,L=x0+m,R=x0+w-m,aw=w-2*m,out=[];
+/* Sizes in points for one tag. tagStyle(1) fits a 4 x 2 inch slot; SMALL_STYLE fits a 2.25 x 1.25 inch label. */
+const tagStyle=f=>({m:10,top:10*f,tag:18*f,brand:11*f,pn:14*f,desc:10*f,foot:8*f,bh:42*f,l1:17*f,l2:13*f,gap:6*f,l3:11*f,gapx:8*f});
+const SMALL_STYLE={m:6,top:4,tag:10,brand:7,pn:9,desc:7.5,foot:6,bh:28,l1:10.5,l2:9,gap:3,l3:7.5,gapx:5};
+/* One tag drawn into the box with its lower-left corner at (x0,yb), sized by st. */
+function tagPdf(u,x0,yb,w,h,st){
+  const c=catOf(u.part_number),m=st.m,L=x0+m,R=x0+w-m,aw=w-2*m,out=[];
   const T=(font,size,x,y,s)=>out.push('BT /'+font+' '+size.toFixed(1)+' Tf '+x.toFixed(1)+' '+y.toFixed(1)+' Td ('+pdfEsc(s)+') Tj ET');
-  let y=yb+h-10*f-18*f;
-  const tag=pdfText(u.tag);T('F2',18*f,L,y,tag);
-  const bsz=11*f,bw=aw-textW(tag,18*f,true)-8*f;
-  const brand=bw>0?fitText(c.brand,bsz,true,bw):'';
-  if(brand)T('F2',bsz,R-textW(brand,bsz,true),y,brand);
-  y-=17*f;
-  const psz=14*f;let pn=pdfText(u.part_number);while(pn.length>1&&pn.length*0.6*psz>aw)pn=pn.slice(0,-1);
-  T('F3',psz,L,y,pn);
-  y-=13*f;
-  T('F1',10*f,L,y,fitText(c.description,10*f,false,aw));
-  y-=6*f;
-  const bits=barBits(u.tag),bh=42*f;
+  let y=yb+h-st.top-st.tag;
+  const tag=pdfText(u.tag);T('F2',st.tag,L,y,tag);
+  const bw=aw-textW(tag,st.tag,true)-st.gapx;
+  const brand=bw>0?fitText(c.brand,st.brand,true,bw):'';
+  if(brand)T('F2',st.brand,R-textW(brand,st.brand,true),y,brand);
+  y-=st.l1;
+  let pn=pdfText(u.part_number);while(pn.length>1&&pn.length*0.6*st.pn>aw)pn=pn.slice(0,-1);
+  T('F3',st.pn,L,y,pn);
+  y-=st.l2;
+  T('F1',st.desc,L,y,fitText(c.description,st.desc,false,aw));
+  y-=st.gap;
+  const bits=barBits(u.tag),bh=st.bh;
   if(bits){
     /* Whole printer dots per bar width (203 dots per inch) so the bars stay sharp and scan reliably. */
     const mw=Math.max(1,Math.floor(aw*203/72/bits.length))*72/203,bx=x0+(w-mw*bits.length)/2;
@@ -566,16 +594,18 @@ function tagPdf(u,x0,yb,w,h,f){
     while(i<bits.length){if(bits[i]==='1'){let j=i;while(j<bits.length&&bits[j]==='1')j++;r+=(bx+i*mw).toFixed(2)+' '+(y-bh).toFixed(2)+' '+((j-i)*mw).toFixed(2)+' '+bh.toFixed(2)+' re\n';i=j}else i++}
     out.push(r+'f');
   }
-  y-=bh+11*f;
+  y-=bh+st.l3;
   const foot=[locName(u.location_id)+(u.bin?' / '+u.bin:''),COND[u.condition],fmtDate(u.created_at)].filter(Boolean).join(' | ');
-  T('F1',8*f,L,y,fitText(foot,8*f,false,aw));
+  T('F1',st.foot,L,y,fitText(foot,st.foot,false,aw));
   return out.join('\n')+'\n';
 }
-function buildTagsPdf(list,per){
-  const W=288,H=432,slots=per===1||per===2?per:3,sh=H/slots,f={1:1.5,2:1.5,3:1}[slots],pages=[];
+/* mode: '3', '2' or '1' tags per 4 x 6 label, or 'small' for one tag per 2.25 x 1.25 inch label. */
+function buildTagsPdf(list,mode){
+  const small=mode==='small',slots=small?1:(mode==='1'||mode==='2'?+mode:3);
+  const W=small?162:288,H=small?90:432,sh=H/slots,st=small?SMALL_STYLE:tagStyle(slots===3?1:1.5),pages=[];
   for(let i=0;i<list.length;i+=slots){
     let c='';
-    for(let s=0;s<slots&&i+s<list.length;s++)c+=tagPdf(list[i+s],0,H-(s+1)*sh,W,sh,f);
+    for(let s=0;s<slots&&i+s<list.length;s++)c+=tagPdf(list[i+s],0,H-(s+1)*sh,W,sh,st);
     /* Light dashed lines to cut along between the tags. */
     if(slots>1)c+='q 0.5 w 0.6 G [4 3] 0 d '+Array.from({length:slots-1},(_,k)=>'0 '+(H-(k+1)*sh)+' m '+W+' '+(H-(k+1)*sh)+' l S').join(' ')+' Q\n';
     pages.push(c);
@@ -596,21 +626,23 @@ function buildTagsPdf(list,per){
   out+='trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
   return new Blob([out],{type:'application/pdf'});
 }
+/* Returns true once the file has been handed to the Share menu (or downloaded), false if nothing was sent. */
 async function shareTags(list){
-  list=list.filter(Boolean);if(!list.length)return;
-  const sel=$('tag-layout'),per=sel?sel.value:tagLayout();
-  try{localStorage.setItem(TAG_LAYOUT_KEY,per)}catch(e){}
-  let blob;try{blob=buildTagsPdf(list,+per)}catch(e){toast('Could not make the tags: '+e.message,true);return}
+  list=list.filter(Boolean);if(!list.length)return false;
+  const sel=$('tag-layout'),mode=sel?sel.value:tagLayout();
+  try{localStorage.setItem(TAG_LAYOUT_KEY,mode)}catch(e){}
+  let blob;try{blob=buildTagsPdf(list,mode)}catch(e){toast('Could not make the tags: '+e.message,true);return false}
   const name='tags-'+list[0].tag+(list.length>1?'-and-'+(list.length-1)+'-more':'')+'.pdf';
   const file=new File([blob],name,{type:'application/pdf'});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{await navigator.share({files:[file],title:'Stock tags'});return}
-    catch(e){if(e.name==='AbortError')return}
+    try{await navigator.share({files:[file],title:'Stock tags'});return true}
+    catch(e){if(e.name==='AbortError')return false}
   }
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast('Saved '+name+'. Open it from the label printer app.');
+  return true;
 }
 
 /* ---------- camera ---------- */
@@ -668,7 +700,16 @@ async function labelRead(file){
 /* ---------- actions ---------- */
 const jobFrom=id=>{const el=$(id);return el?el.value.trim().replace(/^#/,''):''};
 const A={
-  tab:d=>{S.tab=d.t;render()},
+  tab:d=>{S.tab=d.t;if(d.t==='labels'&&!S.lask)S.lsel=null;render()},
+  lall:()=>{S.lsel=null;render()},
+  lnone:()=>{S.lsel=new Set();render()},
+  lsend:async()=>{
+    const list=pendingLabels().filter(labelChecked);if(!list.length)return;
+    if(await shareTags(list)){S.lask=list.map(i=>i.id);S.lsel=null;render()}},
+  lmark:async()=>{const list=pendingLabels().filter(labelChecked);if(list.length)await markPrinted(list.map(i=>i.id))},
+  lyes:async()=>{const ids=S.lask||[];S.lask=null;await markPrinted(ids)},
+  lno:()=>{S.lask=null;render()},
+  lgo:d=>{S.lsel=new Set(String(d.ids).split(',').filter(Boolean));S.lask=null;S.tab='labels';closeDlg();render()},
   refresh:()=>load(),
   signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
   open:d=>{if(d.unit){openUnit(d.unit);return}S.dlg={type:'part',pn:d.pn,unit:null};renderDlg()},
@@ -695,7 +736,6 @@ const A={
   invsave:()=>invSave(),
   invback:()=>{Object.assign(S.inv,{step:'pick',files:[],lines:[],err:'',dup:''});renderDlg()},
   invprint:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)printTags(r.stock)},
-  invshare:()=>{const r=S.inv&&S.inv.result;if(r&&r.stock.length)shareTags(r.stock)},
   camstart:()=>camStart(),
   labelpick:()=>{const i=$('sc-label');if(i)i.click()},
   camstop:async()=>{await camStop();renderDlg()},
@@ -723,7 +763,6 @@ const A={
   printlast:()=>{const l=S.scan&&S.scan.last;if(l)printTags(l.ids.map(item).filter(Boolean))},
   print:d=>printTags([item(d.id)]),
   share:d=>shareTags([item(d.id)]),
-  sharelast:()=>{const l=S.scan&&S.scan.last;if(l)shareTags(l.ids.map(item).filter(Boolean))},
   hold:async d=>{const job=jobFrom('u-job');if(!job){toast('Type the job number first.',true);return}
     await updItem(d.id,['in_stock'],{status:'held',held_job:job},`Held for job #${job}. Nobody else can take it now.`)},
   release:async d=>{await updItem(d.id,['held'],{status:'in_stock'},'Hold released. It is available again.')},
@@ -782,6 +821,8 @@ document.addEventListener('input',e=>{const el=e.target;
   if(el.dataset.scan&&S.scan)S.scan[el.dataset.scan]=el.value});
 document.addEventListener('change',async e=>{const el=e.target;
   if(el.id==='locf'){S.loc=el.value;render();return}
+  if(el.id==='tag-layout'){try{localStorage.setItem(TAG_LAYOUT_KEY,el.value)}catch(x){}return}
+  if(el.dataset.lc){if(!S.lsel)S.lsel=new Set(pendingLabels().map(i=>i.id));if(el.checked)S.lsel.add(el.dataset.lc);else S.lsel.delete(el.dataset.lc);render();return}
   if(el.id==='sc-label'){const f=el.files&&el.files[0];el.value='';if(f)labelRead(f);return}
   if(S.inv){
     if(el.id==='inv-files'){S.inv.files=[...el.files];S.inv.err='';renderDlg();return}
