@@ -3,9 +3,9 @@
 
    A tag is "pending" until someone marks its label printed. Stock parts are pending from the moment they are
    scanned in; job parts are pending once they are received. Sending the labels builds a PDF (one, two or three
-   tags per 4 x 6 inch label, or one tag per 2.25 x 1.25 inch label). On a phone or tablet the file is saved so the
-   printer's own app (FlashLabel Pro) can open it, because over Bluetooth the Labeer Y43 only listens to that app and
-   the Share menu does not list it. On a computer the file opens in a new tab to print over USB with Labeer's driver.
+   tags per 4 x 6 inch label, or one tag per 2.25 x 1.25 inch label). On a phone or tablet the labels go as pictures through
+   the Share menu to the printer's own app (FlashLabel Pro), because over Bluetooth the Labeer Y43 only listens to that
+   app, and the app takes pictures but not PDFs. On a computer the file opens in a new tab to print over USB with Labeer's driver.
 
    A page uses it like this:
      Labels.init({SB, me:()=>profile, rerender, toast, query:()=>search text, loc:()=>location id, changed})
@@ -81,20 +81,19 @@ const checked=r=>st.sel?st.sel.has(r.id):true;
 /* ---------- the list ---------- */
 const tagLayout=()=>{try{const v=localStorage.getItem(KEY);return ['1','2','small'].includes(v)?v:'3'}catch(e){return '3'}};
 const layoutSel=()=>`<select id="tag-layout" aria-label="Labels" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option><option value="small" ${tagLayout()==='small'?'selected':''}>Small labels, 2.25 x 1.25 (1 per label)</option></select>`;
-/* Phones and tablets save the file for FlashLabel Pro (the Labeer printer's app); computers print it.
-   The main button is the one that fits the device; the other stays available. */
+/* Phones and tablets send the labels as pictures through the Share menu, where FlashLabel Pro (the Labeer
+   printer's app) takes them; it does not take PDFs. Computers print the PDF. Save label file is the fallback. */
 const touch=()=>{try{return matchMedia('(pointer:coarse)').matches}catch(e){return false}};
-const canShareFiles=()=>{try{return !!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.pdf',{type:'application/pdf'})]}))}catch(e){return false}};
+const canSharePng=()=>{try{return !!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.png',{type:'image/png'})]}))}catch(e){return false}};
 function sendButtons(n){
-  const d=n?'':'disabled',phone=touch();
-  const save=`<button ${phone?'class="primary"':''} data-lbl="save" ${d}>Save label file</button>`;
-  const print=`<button ${phone?'':'class="primary"'} data-lbl="print" ${d}>Print</button>`;
-  const shr=phone&&canShareFiles()?`<button data-lbl="share" ${d}>Share</button>`:'';
-  return phone?save+shr+print:print+save;
+  const d=n?'':'disabled';
+  if(touch()&&canSharePng())return `<button class="primary" data-lbl="share" ${d}>Send to FlashLabel Pro</button><button data-lbl="save" ${d}>Save label file</button>`;
+  return `<button class="primary" data-lbl="print" ${d}>Print</button><button data-lbl="save" ${d}>Save label file</button>`;
 }
 const howTo=()=>`<details style="margin:0 12px 12px"><summary>How to print</summary>
-  <p><b>On a phone or tablet:</b> tap Save label file. Open FlashLabel Pro, choose to print a PDF or file, and pick the file you just saved (it is in Downloads or Files, named tags-...). Print it.</p>
-  <p><b>On a computer:</b> plug the Labeer printer in with its USB cable and install Labeer's driver once. Click Print, then in the window that opens press Print again (Cmd+P on a Mac, Ctrl+P on Windows). Pick the Labeer printer and the 4 x 6 paper size. For the small labels, pick 2.25 x 1.25.</p>
+  <p><b>On a phone or tablet:</b> tap Send to FlashLabel Pro and pick FlashLabel Pro in the menu that opens. Print from there. Each label goes over as a picture.</p>
+  <p><b>On a computer:</b> plug the Labeer printer in with its USB cable and install Labeer's driver once. Click Print, then in the tab that opens press Print again (Cmd+P on a Mac, Ctrl+P on Windows). Pick the Labeer printer and the 4 x 6 paper size. For the small labels, pick 2.25 x 1.25.</p>
+  <p>If FlashLabel Pro is not in the menu, tap Save label file instead and open the file from FlashLabel Pro.</p>
   <p>When the labels are out, answer Yes so they leave this list.</p></details>`;
 L.view=function(){
   const rows=shown(),ed=canPrint(),picked=rows.filter(checked),n=st.ask?st.ask.length:0;
@@ -201,6 +200,42 @@ L.buildPdf=function(list,mode){
   out+='trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
   return new Blob([out],{type:'application/pdf'});
 };
+/* ---------- the pictures (for FlashLabel Pro) ---------- */
+/* The same layout as the PDF, drawn at the printer's 203 dots per inch: one PNG per 4 x 6 label (or per small label). */
+const DPI=203,K=DPI/72;
+const FONT={F1:'Helvetica, Arial, sans-serif',F2:'bold Helvetica, Arial, sans-serif',F3:'bold "Courier New", Courier, monospace'};
+function tagCanvas(c,r,x0,top,w,h,s){
+  const L0=x0+s.m,R=x0+w-s.m,aw=w-2*s.m;
+  const T=(f,size,x,y,t)=>{c.font=(f==='F1'?'':'bold ')+size+'px '+FONT[f].replace(/^bold /,'');c.fillText(t,x,y)};
+  let y=top+s.top+s.tag;   /* baselines, measured down from the top */
+  const tag=pdfText(r.tag);T('F2',s.tag,L0,y,tag);
+  const bw=aw-textW(tag,s.tag,true)-s.gapx,right=bw>0?fitText(r.right,s.brand,true,bw):'';
+  if(right)T('F2',s.brand,R-textW(right,s.brand,true),y,right);
+  y+=s.l1;
+  let pn=pdfText(r.pn);while(pn.length>1&&pn.length*0.6*s.pn>aw)pn=pn.slice(0,-1);
+  T('F3',s.pn,L0,y,pn);
+  y+=s.l2;T('F1',s.desc,L0,y,fitText(r.desc,s.desc,false,aw));
+  y+=s.gap;
+  const bits=barBits(r.tag),bh=s.bh;
+  if(bits){
+    const mw=Math.max(1,Math.floor(aw*K/bits.length))/K,bx=Math.round((x0+(w-mw*bits.length)/2)*K)/K;
+    for(let i=0;i<bits.length;){if(bits[i]==='1'){let j=i;while(j<bits.length&&bits[j]==='1')j++;c.fillRect(bx+i*mw,y,(j-i)*mw,bh);i=j}else i++}
+  }
+  y+=bh+s.l3;T('F1',s.foot,L0,y,fitText(r.foot,s.foot,false,aw));
+}
+L.buildPngs=async function(list,mode){
+  const small=mode==='small',slots=small?1:(mode==='1'||mode==='2'?+mode:3);
+  const W=small?162:288,H=small?90:432,sh=H/slots,s=small?SMALL_STYLE:tagStyle(slots===3?1:1.5),out=[];
+  for(let i=0;i<list.length;i+=slots){
+    const cv=document.createElement('canvas');cv.width=Math.round(W*K);cv.height=Math.round(H*K);
+    const c=cv.getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,cv.width,cv.height);c.scale(K,K);c.fillStyle='#000';c.textBaseline='alphabetic';
+    for(let k=0;k<slots&&i+k<list.length;k++)tagCanvas(c,list[i+k],0,k*sh,W,sh,s);
+    if(slots>1){c.save();c.strokeStyle='#999';c.lineWidth=0.5;c.setLineDash([4,3]);for(let k=1;k<slots;k++){c.beginPath();c.moveTo(0,k*sh);c.lineTo(W,k*sh);c.stroke()}c.restore()}
+    out.push(await new Promise((ok,bad)=>cv.toBlob(b=>b?ok(b):bad(new Error('the picture could not be made')),'image/png')));
+  }
+  return out;
+};
+
 /* how: 'save' downloads the file, 'print' opens it in a new tab to print, 'share' opens the Share menu.
    Returns true once the file has gone somewhere, false if nothing was sent. */
 async function send(list,how){
@@ -217,9 +252,14 @@ async function send(list,how){
     how='save';   /* pop-up blocked: save the file instead */
   }
   if(how==='share'){
-    const file=new File([blob],name,{type:'application/pdf'});
-    try{await navigator.share({files:[file],title:'Labels to print'});return true}
-    catch(e){if(e.name==='AbortError'){toast('Nothing was shared. Use Save label file, then open it in FlashLabel Pro.');return false}}
+    try{
+      const pngs=await L.buildPngs(list,mode),base=name.replace(/\.pdf$/,'');
+      const files=pngs.map((b,i)=>new File([b],base+(pngs.length>1?'-'+(i+1):'')+'.png',{type:'image/png'}));
+      await navigator.share({files,title:'Labels to print'});return true;
+    }catch(e){
+      if(e.name==='AbortError'){toast('Nothing was sent. Tap Send to FlashLabel Pro again, or Save label file.');return false}
+      toast('Could not open the Share menu ('+(e.message||e.name)+'). Saving the file instead.',true);
+    }
   }
   const a=document.createElement('a');
   a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
