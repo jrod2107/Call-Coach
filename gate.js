@@ -9,6 +9,8 @@
    data-slug      which protected_pages row to load
    data-link      "1" also offers "Email me a sign-in link"
    data-detect    "0" stops the sign-in library reading the address (for pages another service redirects back to)
+   data-code      "1" also asks for the 6-digit two-step code (once every two weeks on each device) before the
+                  page opens, for pages that read or save customer details. The database enforces the same rule.
 
    To change a protected page: edit its private content file, then release it (tools/release-protected-page.sh). */
 (function(){
@@ -64,6 +66,46 @@
       const {data}=await sb.from('profiles').select('display_name,email,role,manager,senior').eq('id',session.user.id).maybeSingle();
       if(data)AppShell.set(data)}catch(e){}}
   window.AppShellSignOut=async()=>{try{await sb.auth.signOut({scope:'local'})}catch(e){} location.reload()};
+  /* Two-step code: has this sign-in entered it in the last two weeks? */
+  const CODE_DAYS=14;
+  function codeAge(s){
+    try{const p=JSON.parse(atob(s.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      const t=(p.amr||[]).filter(a=>a&&a.method==='totp').map(a=>Number(a.timestamp)).filter(isFinite).sort((a,b)=>a-b).pop();
+      return t?(Date.now()/1000-t)/86400:0}catch(e){return 0}
+  }
+  async function coded(){
+    try{const {data:{session}}=await sb.auth.getSession();const {data}=await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      return {ok:!!data&&data.currentLevel==='aal2'&&!(session&&codeAge(session)>CODE_DAYS),setUp:!!data&&data.nextLevel==='aal2'}}
+    catch(e){return {ok:true,setUp:true}}   /* offline: the database still decides what can be read */
+  }
+  async function askCode(setUp){
+    menu();
+    const jobs=(D.settings||'').replace(/settings\/$/,'')+'jobs/';
+    if(!setUp){
+      form.innerHTML='<h1></h1><p>This page holds customer details, so it needs the 6-digit code from an authenticator app. This account does not have one set up yet. Set it up on the Jobs page, then come back.</p><a id="gate-jobs">Set it up on Jobs</a>';
+      form.querySelector('h1').textContent=title;form.querySelector('#gate-jobs').href=jobs;return}
+    form.innerHTML='<h1></h1><p>This page holds customer details. Type the 6-digit code from your authenticator app. You enter it once every two weeks on each device.</p>'
+      +'<label>6-digit code<input id="gate-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>'
+      +'<button type="submit">Continue</button><div id="gate-msg" role="status"></div>';
+    form.querySelector('h1').textContent=title;
+    const m=form.querySelector('#gate-msg'),inp=form.querySelector('#gate-code');
+    inp.addEventListener('input',()=>{inp.value=inp.value.replace(/\D/g,'').slice(0,6)});inp.focus();
+    form.onsubmit=async e=>{e.preventDefault();e.stopImmediatePropagation();
+      if(inp.value.length!==6){m.textContent='Type all 6 digits.';return}
+      m.textContent='Checking…';
+      try{const lf=await sb.auth.mfa.listFactors();const f=((lf.data&&lf.data.totp)||[]).find(x=>x.status==='verified');
+        if(!f)throw new Error('No authenticator is set up on this account. Set it up on the Jobs page.');
+        const {error}=await sb.auth.mfa.challengeAndVerify({factorId:f.id,code:inp.value});if(error)throw error;
+        form.onsubmit=null;open()}
+      catch(err){m.textContent=/invalid|expired/i.test(err.message||'')?'That code did not match. Wait for a new one and try again.':(err.message||String(err))}};
+  }
+  /* After sign-in: ask for the code first when the page needs it, then open the page. */
+  let proceeded=false;   /* a password sign-in also raises SIGNED_IN; go on once */
+  async function proceed(){
+    if(proceeded)return;proceeded=true;
+    if(D.code==='1'){const c=await coded();if(!c.ok){askCode(c.setUp);return}}
+    open();
+  }
   let opening=false;
   async function open(){
     if(opening)return;opening=true;   /* a password sign-in also raises SIGNED_IN; open once */
@@ -82,11 +124,12 @@
     show(res.data.html);
   }
   form.addEventListener('submit',async e=>{e.preventDefault();
+    if(!$('gate-pass'))return;   /* the code step has its own handler */
     if(!$('gate-pass').value){say('Type your password'+(D.link==='1'?', or use the sign-in link button.':'.'));return}
     say('Signing in…');
     const {error}=await sb.auth.signInWithPassword({email:$('gate-email').value.trim(),password:$('gate-pass').value});
     if(error){say(error.message==='Invalid login credentials'?'Wrong email or password.':error.message);return}
-    open()});
+    proceed()});
   if(D.link==='1')$('gate-link').addEventListener('click',async()=>{
     const email=$('gate-email').value.trim();if(!/^\S+@\S+\.\S+$/.test(email)){say('Type your email first.');return}
     say('Sending…');
@@ -102,10 +145,10 @@
       let gone=false;try{const r=await sb.auth.getUser();gone=!!(r.error&&(r.error.status===401||r.error.status===403))}catch(e){}
       if(gone){try{await sb.auth.signOut({scope:'local'})}catch(e){} try{localStorage.removeItem(KEY)}catch(e){} session=null}
     }
-    if(session){open();return}
+    if(session){proceed();return}
     if(window.AppShell)AppShell.set(null);
     /* A sign-in link lands here a moment before the library has finished reading it. */
-    sb.auth.onAuthStateChange((ev,s)=>{if(s&&ev==='SIGNED_IN'&&document.body.contains(gate))open()});
+    sb.auth.onAuthStateChange((ev,s)=>{if(s&&ev==='SIGNED_IN'&&document.body.contains(gate))proceed()});
     $('gate-email').focus();
   })();
 })();

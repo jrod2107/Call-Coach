@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // HCP proxy for the City Appliance intake tool.
 // The HCP API key lives ONLY here, as the HCP_API_KEY secret.
-// verify_jwt=true plus isStaff(): only signed-in csr/admin profiles can call this function.
+// verify_jwt=true plus isStaff(): only signed-in csr/admin profiles that entered their 6-digit code can call this function.
 // Request/response shapes verified against docs.housecallpro.com (2026-11-08):
 //   money fields (unit_price, unit_cost) are in CENTS.
 
@@ -51,7 +51,16 @@ const id = (v: unknown) => encodeURIComponent(String(v || ""));
    here that the caller is a signed-in user whose profile role is csr or admin.
    Users can read their own profile row (RLS) but cannot change their role. */
 const STAFF_ROLES = ["csr", "admin"];
-async function isStaff(req: Request): Promise<boolean> {
+const CODE_NEEDED = "You need your 6-digit sign-in code for this. Enter it on the Jobs page, then try again.";
+/* Customer details also need two-step sign-in (the 6-digit code), the same rule the database uses for job data.
+   The token was just checked by /auth/v1/user, so its "aal" claim can be trusted. */
+function hasCode(jwt: string): boolean {
+  try {
+    const b = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b + "=".repeat((4 - b.length % 4) % 4))).aal === "aal2";
+  } catch { return false; }
+}
+async function isStaff(req: Request): Promise<"ok" | "nocode" | false> {
   const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!jwt.startsWith("eyJ")) return false; // publishable and secret keys are not user sessions
   const url = Deno.env.get("SUPABASE_URL"), anon = Deno.env.get("SUPABASE_ANON_KEY");
@@ -64,7 +73,8 @@ async function isStaff(req: Request): Promise<boolean> {
   const p = await fetch(`${url}/rest/v1/profiles?id=eq.${encodeURIComponent(uid)}&select=role`, { headers: h });
   if (p.status !== 200) return false;
   const rows = (await p.json()) as Record<string, unknown>[];
-  return Array.isArray(rows) && rows.length === 1 && STAFF_ROLES.includes(String(rows[0].role));
+  if (!(Array.isArray(rows) && rows.length === 1 && STAFF_ROLES.includes(String(rows[0].role)))) return false;
+  return hasCode(jwt) ? "ok" : "nocode";
 }
 
 Deno.serve(async (req: Request) => {
@@ -73,7 +83,9 @@ Deno.serve(async (req: Request) => {
 
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers });
-  if (!(await isStaff(req))) return new Response(JSON.stringify({ error: "Sign in with a City Appliance staff account." }), { status: 401, headers });
+  const staff = await isStaff(req);
+  if (!staff) return new Response(JSON.stringify({ error: "Sign in with a City Appliance staff account." }), { status: 401, headers });
+  if (staff === "nocode") return new Response(JSON.stringify({ error: CODE_NEEDED }), { status: 403, headers });
 
   let action = "", payload: Record<string, unknown> = {};
   try {

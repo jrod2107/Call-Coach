@@ -80,7 +80,10 @@ const allowed=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 
 async function whoami(){
   S.me=await Auth.profile(S.session);
+  Object.assign(S,await Auth.assurance(S.session));
 }
+/* This list holds customer details, so the database also asks for the 6-digit code. */
+const ready=()=>allowed()&&S.aal==='aal2';
 async function load(){
   S.loading=true;render();
   const since=new Date(Date.now()-LEAD_DAYS*864e5).toISOString();
@@ -165,7 +168,7 @@ function vNoAccess(){return `<div class="card"><h2>Office accounts only</h2>
 function render(){
   if(window.AppShell)AppShell.set(S.session?S.me:null);
   $('app').innerHTML=!SB?'<div class="card"><h2>To book</h2><p>This page is missing its configuration (config.js).</p></div>'
-    :!S.session?vLogin():!allowed()?vNoAccess():vPage();
+    :!S.session?vLogin():!allowed()?vNoAccess():S.aal!=='aal2'?Auth.codeForm('This list holds customer names and phone numbers.','../',S.next):vPage();
 }
 
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
@@ -175,12 +178,12 @@ document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.p
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
-  S.session=data.session;await whoami();render();if(allowed())load()});
+  S.session=data.session;await whoami();render();if(ready())load()});
 (async function boot(){
   if(!SB){render();return}
   S.session=await Auth.session(s=>{S.session=s});
   if(S.session)await whoami();
-  render();if(S.session&&allowed())load();
+  render();if(S.session&&ready())load();
 })();
 </script>
 </body>

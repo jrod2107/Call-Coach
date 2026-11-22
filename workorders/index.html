@@ -148,7 +148,10 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 /* ---------- data ---------- */
 async function whoami(){
   S.me=await Auth.profile(S.session);
+  Object.assign(S,await Auth.assurance(S.session));
 }
+/* Work orders hold tenant and customer details, so the database also asks for the 6-digit code. */
+const ready=()=>office()&&S.aal==='aal2';
 async function load(){
   S.loading=true;render();
   const since=new Date(Date.now()-10*864e5).toISOString();
@@ -503,20 +506,20 @@ document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.p
   const msg=$('lgMsg');msg.textContent='Signing in…';
   const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
-  S.session=data.session;await whoami();render();if(office())load()});
+  S.session=data.session;await whoami();render();if(ready())load()});
 $('dlg').addEventListener('close',()=>{S.dlg=null;S.edit=null});
-window.addEventListener('focus',()=>{if(S.session&&office()&&!S.loading&&!(S.dlg&&!S.dlg.id))load()});
+window.addEventListener('focus',()=>{if(S.session&&ready()&&!S.loading&&!(S.dlg&&!S.dlg.id))load()});
 
 function render(){
   if(window.AppShell)AppShell.set(S.session?S.me:null);   /* the shared menu shows what this role can open */
   $('app').innerHTML=!SB?'<div class="card"><h2>Work Orders</h2><p>This page is missing its configuration (config.js).</p></div>'
-    :!S.session?vLogin():!office()?vWaiting():vMain();
+    :!S.session?vLogin():!office()?vWaiting():S.aal!=='aal2'?Auth.codeForm('Work orders hold tenant and customer details.','../',S.next):vMain();
 }
 (async function boot(){
   if(!SB){render();return}
   S.session=await Auth.session(s=>{S.session=s});
   if(S.session)await whoami();
-  render();if(S.session&&office())load();
+  render();if(S.session&&ready())load();
 })();
 </script>
 </body>

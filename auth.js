@@ -13,7 +13,11 @@
      Auth.loginForm('City Appliance Jobs')           the sign-in form (form id "login", fields lgEmail and lgPass);
                                                      an optional second argument adds HTML at the end of the form
      await Auth.signIn(email,password)               returns {data,error} like the Supabase call
-     Auth.signOut()                                  ends the sign-in on this device only, then reloads */
+     Auth.signOut()                                  ends the sign-in on this device only, then reloads
+     Auth.codeForm(why,base,next)                    the "enter your 6-digit code" card. It checks the code itself and
+                                                     reloads the page when it matches. `next` is S.next: when the
+                                                     account has no authenticator yet, the card sends them to Jobs
+                                                     to set one up. `base` is the path to the site root ("../"). */
 (function(){
   if(window.Auth)return;
   const CFG=window.COACH_CONFIG||{};
@@ -66,5 +70,32 @@
   async function signOut(){
     try{await client().auth.signOut({scope:'local'})}finally{location.reload()}
   }
-  window.Auth={client,session,profile,assurance,codeAgeDays,loginForm,signIn,signOut,CODE_DAYS};
+  function codeForm(why,base,next){
+    const jobs=(base==null?'../':base)+'jobs/';
+    if(next&&next!=='aal2')return `<div class="card"><h2>Set up two-step sign-in</h2>
+  <p>${esc(why||'This page holds customer details.')} It needs the 6-digit code from an authenticator app, and this account does not have one set up yet. Set it up on the Jobs page, then come back.</p>
+  <a class="btn primary" href="${esc(jobs)}">Set it up on Jobs</a></div>`;
+    return `<form class="card" id="authCode"><h2>Enter your sign-in code</h2>
+  <p>${esc(why||'This page holds customer details.')} Type the 6-digit code from your authenticator app. You enter it once every two weeks on each device.</p>
+  <label class="fld"><span>6-digit code</span><input id="authCodeIn" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+  <button class="primary" type="submit">Continue</button><div id="authCodeMsg" class="muted" role="status"></div></form>`;
+  }
+  async function verify(code){
+    const c=client(),lf=await c.auth.mfa.listFactors();
+    const f=((lf.data&&lf.data.totp)||[]).find(x=>x.status==='verified');
+    if(!f)throw new Error('No authenticator is set up on this account. Set it up on the Jobs page.');
+    const {error}=await c.auth.mfa.challengeAndVerify({factorId:f.id,code});
+    if(error)throw error;
+  }
+  document.addEventListener('input',e=>{if(e.target&&e.target.id==='authCodeIn')e.target.value=e.target.value.replace(/\D/g,'').slice(0,6)});
+  document.addEventListener('submit',async e=>{
+    if(!e.target||e.target.id!=='authCode')return;
+    e.preventDefault();e.stopImmediatePropagation();
+    const m=document.getElementById('authCodeMsg'),code=(document.getElementById('authCodeIn').value||'').trim();
+    if(code.length!==6){m.textContent='Type all 6 digits.';return}
+    m.textContent='Checking…';
+    try{await verify(code);m.textContent='Done. Opening…';location.reload()}
+    catch(err){m.textContent=/invalid|expired/i.test(err.message||'')?'That code did not match. Wait for a new one and try again.':(err.message||String(err))}
+  },true);
+  window.Auth={client,session,profile,assurance,codeAgeDays,loginForm,signIn,signOut,codeForm,verify,CODE_DAYS};
 })();
