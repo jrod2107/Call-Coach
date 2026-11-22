@@ -15,7 +15,9 @@
   if(window.AppShell)return;
   const me=document.currentScript,D=me.dataset,base=D.base||'',here=D.page||'',KEY='shell:me';
   const ic=p=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';
-  /* Order is the same on every page. `group` starts a new labelled section. */
+  /* The standard order is the same on every page. `group` starts a new labelled section.
+     Each person may put the pages in their own order (Settings, My menu). That order is kept on the device,
+     under their email, and only ever rearranges pages their role can already open. */
   const NAV=[
     {k:'home',label:'Home',href:'home/',roles:['admin','csr','tech','stock'],icon:'<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>'},
     {k:'intake',label:'Call intake',href:'intake/',roles:['admin','csr'],icon:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A15 15 0 0 1 3 6a2 2 0 0 1 2-2z"/>'},
@@ -80,12 +82,24 @@
   const root=document.documentElement;
   const link=(n,cls)=>`<a class="${cls}" href="${base+n.href||'./'}"${n.k===here?' aria-current="page"':''}>${ic(n.icon)}<span>${esc(n.label)}</span></a>`;
   let user=null;
+  const okey=()=>'shell:order:'+String(user&&user.email||'').toLowerCase();
+  function saved(){
+    try{const a=JSON.parse(localStorage.getItem(okey())||'null');return Array.isArray(a)?a.filter(k=>typeof k==='string'):null}catch(e){return null}
+  }
+  /* Pages this role can open, in this person's order. Pages missing from a saved order keep their standard place at the end. */
+  function mine(){
+    const items=NAV.filter(n=>n.roles.includes(user.role)),o=saved();
+    if(!o)return {items,custom:false};
+    const at=n=>{const i=o.indexOf(n.k);return i<0?1e3+NAV.indexOf(n):i};
+    return {items:items.slice().sort((a,b)=>at(a)-at(b)),custom:true};
+  }
 
   function draw(){
     if(!user){root.classList.remove('as-on','as-open');return}
-    const can=n=>n.roles.includes(user.role),items=NAV.filter(can);
+    const can=n=>n.roles.includes(user.role),m=mine(),items=m.items;
     let h='';
-    for(const n of items){if(n.group)h+=`<div class="as-group">${n.group}</div>`;h+=link(n,'as-item')}
+    /* Section headings only make sense in the standard order. */
+    for(const n of items){if(n.group&&!m.custom)h+=`<div class="as-group">${n.group}</div>`;h+=link(n,'as-item')}
     side.innerHTML=`<a class="as-brand" href="${base}home/"><span class="as-logo">CA</span>City Appliance</a>
       <nav class="as-nav" aria-label="Pages">${h}</nav>
       <div class="as-foot">${can(SETTINGS)?link(SETTINGS,'as-item'):''}
@@ -130,7 +144,18 @@
       try{user?localStorage.setItem(KEY,JSON.stringify(user)):localStorage.removeItem(KEY)}catch(e){}
       draw();
     },
-    user:()=>user
+    user:()=>user,
+    /* For Settings, My menu. */
+    items:()=>user?mine().items.map(n=>({k:n.k,label:n.label})):[],
+    custom:()=>!!(user&&saved()),
+    setOrder(keys){
+      if(!user)return;
+      try{
+        if(Array.isArray(keys)&&keys.length)localStorage.setItem(okey(),JSON.stringify(keys.filter(k=>NAV.some(n=>n.k===k))));
+        else localStorage.removeItem(okey());
+      }catch(e){}
+      draw();
+    }
   };
   function mount(){
     if(bar)document.body.prepend(bar);

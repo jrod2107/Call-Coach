@@ -29,8 +29,10 @@ This file is public (the repository is public). Never put secrets, customer deta
 
 ## How it is built
 
-- Static pages on GitHub Pages, one folder per tool: `home`, `intake`, `parts`, `stock`, `jobs`, `desk`,
-  `workorders`, `lookup`, `settings`. The call coach is the root `index.html`. Shared settings are in `config.js`.
+- Static pages on GitHub Pages, one folder per tool: `home`, `intake`, `tobook`, `schedule`, `jobs`, `triage`,
+  `workorders`, `pricing`, `parts`, `stock`, `settings`. The call coach is the root `index.html`.
+- Shared files at the root: `config.js` (settings), `shell.js` (the menu), `app.css` (the look), `gate.js` (the
+  sign-in screen for pages whose content is kept in the database, not on the web host).
 - Supabase project "Call-Coach-CA": database, sign-in, server functions (`supabase/functions`), scheduled jobs.
   Every database change is also saved as a file in `supabase/migrations`.
 - Housecall Pro is still the source of truth for jobs and customers. The Jobs page is a read-only copy,
@@ -49,8 +51,8 @@ This file is public (the repository is public). Never put secrets, customer deta
 
 ## Known gaps (remove each line when fixed)
 
-- Each page carries its own copy of sign-in, role checks and styling. Move these to shared files before
-  building the schedule board, and change all copies together until then.
+- The menu and the look are shared (`shell.js`, `app.css`), but most pages still carry their own copy of sign-in
+  and role checks. Move these to a shared file, and change all copies together until then.
 - There is no test copy of the site or database. Changes go straight to live.
 - Two-step sign-in does not yet cover intakes, call transcripts, work orders or the Housecall Pro lookup.
 - No idle sign-out. No spending limits on the AI-backed server functions.
@@ -60,7 +62,9 @@ This file is public (the repository is public). Never put secrets, customer deta
 
 ## Layout rules
 
-- One menu, same order on every page: left side on desktop, bottom bar on phones with at most five items.
+- One menu on every page (`shell.js`): left side on desktop, bottom bar on phones with at most five items. The
+  standard order is the same for everyone. Each person can reorder their own menu in Settings, under My menu;
+  that order is kept on the device and never changes which pages a role can open.
 - Settings in one place, split into "My account" and "Company settings" (admins).
 - Each role sees only what it can use, and the database enforces the same thing.
 - List beside detail on wide screens; list, then detail with a back button, on phones.
