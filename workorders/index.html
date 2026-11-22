@@ -101,13 +101,14 @@ details>summary{color:var(--muted)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Work orders v1. Tables: work_orders, work_order_events, work_order_files (see supabase/migrations/*work_orders_v1.sql).
    Jobs sent to us by warranty companies, property managers and manufacturers start here as leads.
    A work order can only be marked booked by linking the intake a CSR completed for it (the database enforces that),
    so the intake guide is never skipped. The same record then tracks approval, invoice and payment. Office only. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null||n===''?'':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -146,8 +147,7 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 async function load(){
   S.loading=true;render();
@@ -187,11 +187,7 @@ async function upd(id,patch,msg){
 }
 
 /* ---------- views ---------- */
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance Work Orders</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance Work Orders')}
 function vWaiting(){return `<div class="card"><h2>Office only</h2>
   <p>You are signed in as ${esc(S.me.email||'')}. Work orders hold customer and tenant details, so only office accounts can open them.</p>
   <a class="btn" href="../home/" style="text-align:center;text-decoration:none">Back to Home</a><button data-a="signout">Sign out</button></div>`}
@@ -377,7 +373,7 @@ const cleaned=()=>{const E=S.edit,t=k=>String(E[k]==null?'':E[k]).trim()||null;
 const A={
   tab:d=>{S.tab=d.t;render()},
   refresh:()=>load(),
-  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
+  signout:async()=>{await Auth.signOut()},
   close:()=>closeDlg(),
   new:()=>{S.imp={busy:false,msg:'',tone:'',file:null};S.edit=Object.assign({},BLANK,{received_on:today()});S.dlg={type:'wo',id:null};renderDlg()},
   open:d=>{const w=wo(d.id);S.edit=Object.assign({},BLANK,Object.fromEntries(Object.entries(w).map(([k,v])=>[k,v==null?'':v])));S.events=[];S.files=[];S.evnote='';S.dlg={type:'wo',id:d.id};renderDlg();loadDetail(d.id)},
@@ -505,7 +501,7 @@ document.addEventListener('change',e=>{const el=e.target;
   if(el.id==='upfile')upload(el)});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(office())load()});
 $('dlg').addEventListener('close',()=>{S.dlg=null;S.edit=null});
@@ -518,9 +514,8 @@ function render(){
 }
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&office())load();
 })();
 </script>

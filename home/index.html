@@ -54,11 +54,12 @@ td select{width:150px}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Home: one page per role. It only reads data the signed-in person may already see (row-level security decides),
    and shows the tools that role can open. First version: Parts desk and intake numbers. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const today=()=>new Date().toLocaleDateString('en-CA');
@@ -76,8 +77,7 @@ let toastTimer;
 function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
 
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 async function load(){
   S.loading=true;render();
@@ -99,8 +99,8 @@ async function loadTriage(){
   S.tri=null;
   if(!['csr','admin','tech'].includes(S.me.role))return;
   try{
-    const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
-    if(!a.data||a.data.currentLevel!=='aal2'){S.tri={locked:true};render();return}
+    const a=await Auth.assurance(S.session);
+    if(a.aal!=='aal2'){S.tri={locked:true};render();return}
     const from=new Date().toISOString(),to=new Date(Date.now()+14*864e5).toISOString();   /* only visits still ahead */
     const j=await SB.from('jobs').select('id,scheduled_start,job_number').is('deleted_at',null).is('canceled_at',null).eq('work_status','scheduled').gte('scheduled_start',from).lt('scheduled_start',to).limit(600);
     if(j.error)return;
@@ -162,11 +162,7 @@ function vHome(){
    ${vAttention()}
 </div>`;
 }
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance')}
 function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given a role yet. Ask Jake to set it.</p>
   <button data-a="signout">Sign out</button></div>`}
@@ -178,17 +174,16 @@ function render(){
 
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
   if(el.dataset.a==='refresh')load();
-  if(el.dataset.a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+  if(el.dataset.a==='signout'){await Auth.signOut()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())load()});
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&allowed())load();
 })();
 </script>

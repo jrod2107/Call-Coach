@@ -101,6 +101,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <script src="../labels.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Stock v1. Tables: stock_items (one row per physical part), stock_catalog, stock_plan, stock_locations, stock_events
    (see supabase/migrations/*stock_v1.sql).
@@ -109,7 +110,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
      on order = already on a purchase list.  Restock need = minimum - (available + on order).
    The database enforces who may change what; this page only hides what a role cannot do. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null||n===''?'':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -140,8 +141,7 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role,manager,default_location_id').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 /* The API returns at most 1000 rows per request, so read in pages until a short page comes back. */
 async function all(table,build){
@@ -198,11 +198,7 @@ function groups(filter){
 const ebayStage=i=>i.status==='sold'?'Sold':i.ebay_listed_on?'Listed':'To list';
 
 /* ---------- views ---------- */
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance Stock</h2>
-  <p class="muted">Sign in with the email and password you were given.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance Stock')}
 function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given access to Stock yet. Ask Jake to set your role.</p>
   <button data-a="signout">Sign out</button></div>`}
@@ -585,7 +581,7 @@ const A={
   lgo:d=>{Labels.select(String(d.ids).split(',').filter(Boolean));S.tab='labels';closeDlg();render()},
   reprint:async d=>{if(await Labels.reprint('stock',d.id)){S.tab='labels';closeDlg();render()}},
   refresh:()=>load(),
-  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
+  signout:async()=>{await Auth.signOut()},
   open:d=>{if(d.unit){openUnit(d.unit);return}S.dlg={type:'part',pn:d.pn,unit:null};renderDlg()},
   unit:d=>openUnit(d.id),
   back:()=>{S.dlg.unit=null;renderDlg()},
@@ -716,7 +712,7 @@ document.addEventListener('change',async e=>{const el=e.target;
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='sc-pn'){e.preventDefault();setScanPn(e.target.value.trim().toUpperCase());renderDlg();const n=$('sc-description');if(n)n.focus()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())load()});
 $('dlg').addEventListener('close',()=>{camStop();S.dlg=null;S.scan=null;S.inv=null});
@@ -730,9 +726,8 @@ function render(){
 (async function boot(){
   if(!SB){render();return}
   Labels.init({SB,me:()=>S.me,rerender:()=>render(),toast,query:()=>S.q,loc:()=>S.loc,loading:()=>S.loading});
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&allowed())load();
 })();
 </script>

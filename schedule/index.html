@@ -94,6 +94,7 @@ a.stop:hover{background:var(--sunk)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="../intake/schedule-settings.js"></script>
 <script src="../intake/route.js"></script>
@@ -103,7 +104,7 @@ a.stop:hover{background:var(--sunk)}
    and senior technicians see every job, a technician their own, and nobody without the two-step sign-in sees any.
    Clicking a job opens it on the Jobs page, where opening contact details is recorded. Times are Central. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const TZ='America/Chicago';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -124,19 +125,9 @@ const allowed=()=>!!S.me&&['csr','admin','tech'].includes(S.me.role);
 const office=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 const seesAll=()=>!!S.me&&(['csr','admin'].includes(S.me.role)||(S.me.role==='tech'&&S.me.senior));
 
-/* The 6-digit code is asked for once every two weeks on each device, not at every visit. The sign-in itself records when
-   the code was last entered. This only decides when to ask; what a person may read is decided in the database. */
-const CODE_DAYS=14;
-function codeAgeDays(){
-  try{const p=JSON.parse(atob(S.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    const t=(p.amr||[]).filter(a=>a&&a.method==='totp').map(a=>Number(a.timestamp)).filter(isFinite).sort((a,b)=>a-b).pop();
-    return t?(Date.now()/1000-t)/86400:0}catch(e){return 0}   /* cannot tell: do not nag */
-}
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
-  const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();S.aal=a.data?a.data.currentLevel:null;
-  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS)S.aal='aal1';   /* two weeks have passed: ask again */
+  S.me=await Auth.profile(S.session);
+  Object.assign(S,await Auth.assurance(S.session));
 }
 /* One week is loaded at a time: the week that holds the chosen day. */
 async function load(force){
@@ -280,11 +271,7 @@ function vPage(){
    ${rt?'':`<p class="muted foot">Copied from Housecall Pro about every 10 minutes${last?'; last copy '+new Date(last).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:TZ}):''}. Jobs only: time off and other calendar blocks are not shown yet. ${seesAll()?'':'You see your own jobs. '}Click a job to open it on the Jobs page.</p>`}
   </div>`;
 }
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance')}
 function vNoAccess(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account cannot open the schedule. Ask Jake to set your role.</p>
   <a class="btn" href="../home/">Go to Home</a></div>`}
@@ -306,20 +293,19 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]'
   if(a==='today'){S.day=today();go()}
   if(a==='view'){S.view=el.dataset.v;if(S.view==='route')loadRoute();else render()}
   if(a==='rtech'){S.rTech=el.dataset.t;render()}
-  if(a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+  if(a==='signout'){await Auth.signOut()}});
 document.addEventListener('change',e=>{
   if(e.target.id==='jump'&&/^\d{4}-\d\d-\d\d$/.test(e.target.value)){S.day=e.target.value;load();if(S.view==='route')loadRoute()}
   if(e.target.id==='canc'){S.showCancelled=e.target.checked;render()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(ready())load(true)});
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(ready())load(true);
 })();
 </script>

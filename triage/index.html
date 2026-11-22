@@ -80,6 +80,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Triage: going through each job before the visit, so the right parts are on the truck.
 
@@ -97,7 +98,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
    Nothing is kept on the device. */
 const CFG=window.COACH_CONFIG||{};
 const DEMO=['localhost','127.0.0.1'].includes(location.hostname)&&/[?&]demo=1/.test(location.search);   /* stand-in data for the local preview only */
-const SB=(!DEMO&&window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=DEMO?null:Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const TZ='America/Chicago',AHEAD_DAYS=14,PART_OPEN=['need_to_order','ordered','backordered','shipped','received'];
@@ -142,9 +143,8 @@ const within=(j,days)=>hoursTo(j)<=days*24;
 
 /* ---------- loading ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
-  const a=await SB.auth.mfa.getAuthenticatorAssuranceLevel();S.aal=a.data?a.data.currentLevel:null;
+  S.me=await Auth.profile(S.session);
+  Object.assign(S,await Auth.assurance(S.session));
 }
 async function load(){
   if(DEMO){demo();return}
@@ -372,11 +372,7 @@ function renderDlg(){
   for(const id in keep){const e=$(id);if(e&&id!=='chatBox'&&!id.startsWith('np-')&&keep[id]!==e.defaultValue)e.value=keep[id]}
   const c=d.querySelector('.chat');if(c)c.scrollTop=c.scrollHeight;
 }
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance Triage</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance Triage')}
 function vNoAccess(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account does not have access to Triage. Ask Jake to set your role.</p>
   <a class="btn" href="../home/">Go to Home</a></div>`}
@@ -404,11 +400,11 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]'
   if(a==='signoff')signOff(el.dataset.id);
   if(a==='decline')decline(el.dataset.id);
   if(a==='saveset')saveSettings();
-  if(a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+  if(a==='signout'){await Auth.signOut()}});
 $('dlg').addEventListener('close',()=>{S.dlg=null});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed()&&S.aal==='aal2')load()});
 
@@ -440,9 +436,8 @@ function demo(){
 (async function boot(){
   if(DEMO){demo();return}
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&allowed()&&S.aal==='aal2')load();
 })();
 </script>
