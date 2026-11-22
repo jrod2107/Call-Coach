@@ -67,6 +67,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Settings. Two parts on one page:
    My account       every signed-in team member: their own name, usual location and password. Nothing here can
@@ -76,7 +77,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
    The page only shows what the database will let that person do; row-level security and the functions decide. */
 const CFG=window.COACH_CONFIG||{};
 const HERE=location.origin+location.pathname;
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 /* A password reset link lands here. Only the sign-in library can say the link was genuine (it checks it with the
    server and then reports PASSWORD_RECOVERY), so the "set a new password" form is shown on that signal alone and
@@ -99,8 +100,7 @@ let toastTimer;
 function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'bad':'';t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true},bad?7000:4000)}
 
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior,default_location_id').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 async function load(){
   S.loading=true;render();
@@ -236,12 +236,7 @@ function vSettings(){
    ${company?`<h2 class="part">Company settings</h2><p class="muted" style="margin:4px 0 0">${admin()?'Only admins can change these.':'You can see these. An admin changes them.'}</p>`:''}
    ${vTeam()}${vProcs()}${vCollector()}${vIntakeLists()}</div>`;
 }
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div>
-  <button type="button" data-a="forgot" style="border:0;background:none;color:var(--accent-text);padding:0;text-align:left">Forgot your password?</button></form>`}
+function vLogin(){return Auth.loginForm('City Appliance','<button type="button" data-a="forgot" style="border:0;background:none;color:var(--accent-text);padding:0;text-align:left">Forgot your password?</button>')}
 function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account has not been given a role yet. Ask Jake to set it.</p>
   <button data-a="signout">Sign out</button></div>`}
@@ -265,7 +260,7 @@ const A={
     const {error}=await SB.auth.resetPasswordForEmail(email.trim(),{redirectTo:HERE});
     msg.textContent=error?(/rate|limit|seconds/i.test(error.message)?'Too many emails were sent just now. Wait a few minutes and try again.':error.message)
       :'If that email has an account, a reset link is on its way. Open it on this device.'},
-  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
+  signout:async()=>{await Auth.signOut()},
   menumove:d=>{const keys=AppShell.items().map(n=>n.k),i=keys.indexOf(d.k),j=i+Number(d.d);
     if(i<0||j<0||j>=keys.length)return;
     keys.splice(j,0,keys.splice(i,1)[0]);AppShell.setOrder(keys);render();
@@ -321,15 +316,14 @@ document.addEventListener('submit',async e=>{
     S.pw={busy:false,msg:rec?'New password set. Use it next time you sign in.':'Password changed.',ok:true};render();return}
   if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())load()});
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
+  S.session=await Auth.session(s=>{S.session=s});
   if(RECOVERY_SEEN)S.recovery=true;
-  if(session)await whoami();
+  if(S.session)await whoami();
   render();if(S.session&&allowed())load();
 })();
 </script>

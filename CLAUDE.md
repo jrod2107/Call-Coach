@@ -31,8 +31,9 @@ This file is public (the repository is public). Never put secrets, customer deta
 
 - Static pages on GitHub Pages, one folder per tool: `home`, `intake`, `tobook`, `schedule`, `jobs`, `triage`,
   `workorders`, `pricing`, `parts`, `stock`, `settings`. The call coach is the root `index.html`.
-- Shared files at the root: `config.js` (settings), `shell.js` (the menu), `app.css` (the look), `gate.js` (the
-  sign-in screen for pages whose content is kept in the database, not on the web host).
+- Shared files at the root: `config.js` (settings), `shell.js` (the menu), `app.css` (the look), `auth.js` (sign-in,
+  the staff profile and the two-step check, used by every signed-in page), `gate.js` (the sign-in screen for pages
+  whose content is kept in the database, not on the web host).
 - Supabase project "Call-Coach-CA": database, sign-in, server functions (`supabase/functions`), scheduled jobs.
   Every database change is also saved as a file in `supabase/migrations`.
 - Housecall Pro is still the source of truth for jobs and customers. The Jobs page is a read-only copy,
@@ -51,8 +52,8 @@ This file is public (the repository is public). Never put secrets, customer deta
 
 ## Known gaps (remove each line when fixed)
 
-- The menu and the look are shared (`shell.js`, `app.css`), but most pages still carry their own copy of sign-in
-  and role checks. Move these to a shared file, and change all copies together until then.
+- Each page still decides for itself which roles may open it (its `allowed()` check). The database is what
+  enforces access; keep these page checks in step with `shell.js` when a role changes.
 - There is no test copy of the site or database. Changes go straight to live.
 - Two-step sign-in does not yet cover intakes, call transcripts, work orders or the Housecall Pro lookup.
 - No idle sign-out. No spending limits on the AI-backed server functions.

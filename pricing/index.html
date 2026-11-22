@@ -91,6 +91,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Job pricing v1: a calculator. Nothing is saved and no customer details are entered.
      repair:     price = labor level + parts (no diagnostic fee)
@@ -103,7 +104,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
    Sales tax applies to the whole job. A return visit collects a deposit (50%); a same-day repair collects it all.
    Labor levels and the settings are edited by admins from the Prices button. See *job_pricing.sql. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const r2=n=>Math.round((Number(n)||0)*100+1e-7)/100;
@@ -162,8 +163,7 @@ function totals(){
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 async function loadBase(){
   const [m,t,s,z]=await Promise.all([SB.from('pricing_models').select('*').order('sort'),SB.from('labor_tiers').select('*').order('sort'),SB.from('pricing_settings').select('*').maybeSingle(),
@@ -217,11 +217,7 @@ async function lookupPart(i){
 }
 
 /* ---------- views ---------- */
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance Job pricing</h2>
-  <p class="muted">Sign in with the email and password you were given.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance Job pricing')}
 function vWaiting(){return `<div class="card"><h2>No access to Job pricing</h2>
   <p>You are signed in as ${esc(S.me.email||'')}. Job pricing is for the office and technicians. Ask Jake if you need it.</p>
   <button data-a="signout">Sign out</button></div>`}
@@ -340,7 +336,7 @@ function summaryText(){
 
 /* ---------- actions ---------- */
 const A={
-  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
+  signout:async()=>{await Auth.signOut()},
   model:d=>{S.q.model=d.id;S.q.tier='';S.q.parts.forEach(p=>{p.note=p.note&&p.sell===''?p.note:p.note});saveDraft();render()},
   tier:d=>{S.q.tier=d.id;saveDraft();render()},
   zone:d=>{S.q.zone=d.id;S.znote='';saveDraft();render()},
@@ -403,7 +399,7 @@ document.addEventListener('submit',async e=>{
     S.tiers.push(data);toast('Labor level added.');renderDlg();render();return}
   if(f.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())loadBase()});
 $('dlg').addEventListener('close',()=>{S.dlg=null});
@@ -419,9 +415,8 @@ function render(){
 }
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&allowed())loadBase();
 })();
 </script>

@@ -100,6 +100,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* Jobs v1: a read-only view of Housecall Pro jobs copied into the site (tables jobs, job_private, access_log;
    see supabase/migrations/*jobs_mirror.sql and supabase/functions/jobs-sync). Nothing here writes to Housecall Pro.
@@ -107,7 +108,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
    their own for the next few days, and nobody without two-step sign-in sees any. Opening a job's contact
    details is recorded in access_log. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const TZ='America/Chicago';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -138,21 +139,10 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 /* ---------- data ---------- */
 async function whoami(){
-  const {data}=await SB.from('profiles').select('display_name,email,role,manager,senior,hcp_employee_id').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{role:'pending',email:S.session.user.email,display_name:''};
-}
-/* The 6-digit code is asked for once every two weeks on each device, not at every visit. The sign-in itself records when
-   the code was last entered. This only decides when to ask; what a person may read is decided in the database. */
-const CODE_DAYS=14;
-function codeAgeDays(){
-  try{const p=JSON.parse(atob(S.session.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    const t=(p.amr||[]).filter(a=>a&&a.method==='totp').map(a=>Number(a.timestamp)).filter(isFinite).sort((a,b)=>a-b).pop();
-    return t?(Date.now()/1000-t)/86400:0}catch(e){return 0}   /* cannot tell: do not nag */
+  S.me=await Auth.profile(S.session);
 }
 async function checkAal(){
-  const {data}=await SB.auth.mfa.getAuthenticatorAssuranceLevel();
-  S.aal=data?data.currentLevel:null;S.next=data?data.nextLevel:null;
-  if(S.aal==='aal2'&&codeAgeDays()>CODE_DAYS){S.aal='aal1';S.next='aal2'}   /* two weeks have passed: ask again */
+  Object.assign(S,await Auth.assurance(S.session));
 }
 async function load(){
   if(fromHash())find();
@@ -221,11 +211,7 @@ async function openJob(id){
 }
 
 /* ---------- sign-in and two-step ---------- */
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance Jobs</h2>
-  <p class="muted">Sign in with your City Appliance email and password. If you are already signed in on Home, reload this page.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance Jobs')}
 function vWaiting(){return `<div class="card"><h2>Waiting for access</h2>
   <p>You are signed in as ${esc(S.me.email||'')}, but this account does not have access to Jobs. Ask Jake to set your role.</p>
   <p><a href="../home/">Back to Home</a></p><button data-a="signout">Sign out</button></div>`}
@@ -362,7 +348,7 @@ const A={
   open:d=>openJob(d.id),
   close:()=>closeDlg(),
   enroll:()=>enroll(),
-  signout:async()=>{await SB.auth.signOut({scope:'local'});location.reload()},
+  signout:async()=>{await Auth.signOut()},
   sync:async()=>{if(S.busy)return;S.busy='sync';render();
     try{const r=await fetch(CFG.supabaseUrl+'/functions/v1/jobs-sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.session.access_token,'apikey':CFG.supabaseAnonKey},body:'{}'});
       const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));
@@ -384,7 +370,7 @@ document.addEventListener('submit',async e=>{e.preventDefault();
   if(e.target.id==='mfa'){const c=$('mfaCode').value.trim();if(c.length!==6){$('mfaMsg').textContent='Type all 6 digits.';return}$('mfaMsg').textContent='Checking…';verify(c);return}
   if(e.target.id!=='login')return;
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await start()});
 $('dlg').addEventListener('close',()=>{S.dlg=null;S.det=null});
@@ -408,8 +394,8 @@ function fromHash(){const m=/^#find=(.+)/.exec(location.hash);if(!m)return false
 window.addEventListener('hashchange',()=>{if(fromHash()&&S.me&&S.aal==='aal2')find()});
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  if(session)await start();else render();
+  S.session=await Auth.session();
+  if(S.session)await start();else render();
 })();
 </script>
 </body>

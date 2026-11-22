@@ -53,13 +53,14 @@ input{padding:9px;width:100%}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="../config.js"></script>
+<script src="../auth.js"></script>
 <script>
 /* To book: the office's list of people waiting on us for a date.
    It only reads. Three sources, all already limited to office accounts by row-level security:
      work orders not yet booked, parts that have arrived for a job, and calls saved without a booking.
    Nothing is kept on the device, and nothing is written from this page. */
 const CFG=window.COACH_CONFIG||{};
-const SB=(window.supabase&&CFG.supabaseUrl)?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey):null;
+const SB=Auth.client();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LEAD_DAYS=30;
@@ -78,8 +79,7 @@ const S={session:null,me:null,wos:[],jobs:[],leads:[],loading:false,loaded:false
 const allowed=()=>!!S.me&&['csr','admin'].includes(S.me.role);
 
 async function whoami(){
-  const {data}=await SB.from('profiles').select('id,display_name,email,role,manager,senior').eq('id',S.session.user.id).maybeSingle();
-  S.me=data||{id:S.session.user.id,role:'pending',email:S.session.user.email,display_name:''};
+  S.me=await Auth.profile(S.session);
 }
 async function load(){
   S.loading=true;render();
@@ -158,11 +158,7 @@ function vPage(){
    ${sec('calls','Calls to follow up',`Calls from the last ${LEAD_DAYS} days saved without a booking. One drops off when a later call from the same number is booked.`,S.leads.map(vLead),'No open leads.')}
   </div>`;
 }
-function vLogin(){return `<form class="card" id="login"><h2>City Appliance</h2>
-  <p class="muted">Sign in with your City Appliance email and password.</p>
-  <label class="fld"><span>Email</span><input id="lgEmail" type="email" autocomplete="username" required></label>
-  <label class="fld"><span>Password</span><input id="lgPass" type="password" autocomplete="current-password" required></label>
-  <button class="primary" type="submit">Sign in</button><div id="lgMsg" class="muted" role="status"></div></form>`}
+function vLogin(){return Auth.loginForm('City Appliance')}
 function vNoAccess(){return `<div class="card"><h2>Office accounts only</h2>
   <p>You are signed in as ${esc(S.me.email||'')}. This list is for the office. Ask Jake if you need it.</p>
   <a class="btn" href="../home/">Go to Home</a></div>`}
@@ -174,17 +170,16 @@ function render(){
 
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-a]');if(!el)return;
   if(el.dataset.a==='refresh')load();
-  if(el.dataset.a==='signout'){await SB.auth.signOut({scope:'local'});location.reload()}});
+  if(el.dataset.a==='signout'){await Auth.signOut()}});
 document.addEventListener('submit',async e=>{if(e.target.id!=='login')return;e.preventDefault();
   const msg=$('lgMsg');msg.textContent='Signing in…';
-  const {data,error}=await SB.auth.signInWithPassword({email:$('lgEmail').value.trim(),password:$('lgPass').value});
+  const {data,error}=await Auth.signIn($('lgEmail').value,$('lgPass').value);
   if(error){msg.textContent=error.message;return}
   S.session=data.session;await whoami();render();if(allowed())load()});
 (async function boot(){
   if(!SB){render();return}
-  const {data:{session}}=await SB.auth.getSession();S.session=session;
-  SB.auth.onAuthStateChange((ev,s)=>{if(s)S.session=s});
-  if(session)await whoami();
+  S.session=await Auth.session(s=>{S.session=s});
+  if(S.session)await whoami();
   render();if(S.session&&allowed())load();
 })();
 </script>
