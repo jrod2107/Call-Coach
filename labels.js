@@ -3,9 +3,9 @@
 
    A tag is "pending" until someone marks its label printed. Stock parts are pending from the moment they are
    scanned in; job parts are pending once they are received. Sending the labels builds a PDF (one, two or three
-   tags per 4 x 6 inch label, or one tag per 2.25 x 1.25 inch label) and opens the phone's Share menu so the label
-   printer's own app can take it, because the printer is Bluetooth-only and the phone's print menu cannot see it.
-   Where sharing is not available the file is downloaded instead.
+   tags per 4 x 6 inch label, or one tag per 2.25 x 1.25 inch label). On a phone or tablet the file is saved so the
+   printer's own app (FlashLabel Pro) can open it, because over Bluetooth the Labeer Y43 only listens to that app and
+   the Share menu does not list it. On a computer the file opens in a new tab to print over USB with Labeer's driver.
 
    A page uses it like this:
      Labels.init({SB, me:()=>profile, rerender, toast, query:()=>search text, loc:()=>location id, changed})
@@ -81,6 +81,21 @@ const checked=r=>st.sel?st.sel.has(r.id):true;
 /* ---------- the list ---------- */
 const tagLayout=()=>{try{const v=localStorage.getItem(KEY);return ['1','2','small'].includes(v)?v:'3'}catch(e){return '3'}};
 const layoutSel=()=>`<select id="tag-layout" aria-label="Labels" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option><option value="small" ${tagLayout()==='small'?'selected':''}>Small labels, 2.25 x 1.25 (1 per label)</option></select>`;
+/* Phones and tablets save the file for FlashLabel Pro (the Labeer printer's app); computers print it.
+   The main button is the one that fits the device; the other stays available. */
+const touch=()=>{try{return matchMedia('(pointer:coarse)').matches}catch(e){return false}};
+const canShareFiles=()=>{try{return !!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.pdf',{type:'application/pdf'})]}))}catch(e){return false}};
+function sendButtons(n){
+  const d=n?'':'disabled',phone=touch();
+  const save=`<button ${phone?'class="primary"':''} data-lbl="save" ${d}>Save label file</button>`;
+  const print=`<button ${phone?'':'class="primary"'} data-lbl="print" ${d}>Print</button>`;
+  const shr=phone&&canShareFiles()?`<button data-lbl="share" ${d}>Share</button>`:'';
+  return phone?save+shr+print:print+save;
+}
+const howTo=()=>`<details style="margin:0 12px 12px"><summary>How to print</summary>
+  <p><b>On a phone or tablet:</b> tap Save label file. Open FlashLabel Pro, choose to print a PDF or file, and pick the file you just saved (it is in Downloads or Files, named tags-...). Print it.</p>
+  <p><b>On a computer:</b> plug the Labeer printer in with its USB cable and install Labeer's driver once. Click Print, then in the window that opens press Print again (Cmd+P on a Mac, Ctrl+P on Windows). Pick the Labeer printer and the 4 x 6 paper size. For the small labels, pick 2.25 x 1.25.</p>
+  <p>When the labels are out, answer Yes so they leave this list.</p></details>`;
 L.view=function(){
   const rows=shown(),ed=canPrint(),picked=rows.filter(checked),n=st.ask?st.ask.length:0;
   const warn=(st.err?`<div class="notice bad" style="margin:12px">Could not load the stock tags: ${esc(st.err)}</div>`:'')+
@@ -89,8 +104,8 @@ L.view=function(){
   if(!rows.length)return warn+ask+`<div class="empty">${cfg.loading&&cfg.loading()?'Loading…':'No labels are waiting to be printed. Stock parts show up here when they are scanned in, and job parts when they are received.'}</div>`;
   const bar=ed?`<div class="row" style="padding:12px;align-items:center;flex-wrap:wrap"><span><b>${picked.length}</b> of ${rows.length} selected</span>
     <button class="small" data-lbl="all">Select all</button><button class="small" data-lbl="none">Select none</button><span class="grow"></span>
-    ${layoutSel()}<button class="primary" data-lbl="send" ${picked.length?'':'disabled'}>Send to label printer</button>
-    <button data-lbl="mark" ${picked.length?'':'disabled'}>Mark as printed</button></div>`
+    ${layoutSel()}${sendButtons(picked.length)}
+    <button data-lbl="mark" ${picked.length?'':'disabled'}>Mark as printed</button></div>${howTo()}`
    :`<div class="notice info" style="margin:12px">These tags are waiting to be printed. The office and the stock helper print them.</div>`;
   return warn+ask+bar+`<div class="scroll"><table><thead><tr>${ed?'<th></th>':''}<th>Tag</th><th>Part</th><th>Goes with</th><th>Added</th></tr></thead><tbody>
    ${rows.map(r=>`<tr>${ed?`<td><input type="checkbox" style="width:auto;min-width:24px;min-height:24px" data-lbl-check="${esc(r.id)}" ${checked(r)?'checked':''} aria-label="Select ${esc(r.tag)}"></td>`:''}
@@ -186,22 +201,29 @@ L.buildPdf=function(list,mode){
   out+='trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
   return new Blob([out],{type:'application/pdf'});
 };
-/* Returns true once the file has been handed to the Share menu (or downloaded), false if nothing was sent. */
-async function share(list){
+/* how: 'save' downloads the file, 'print' opens it in a new tab to print, 'share' opens the Share menu.
+   Returns true once the file has gone somewhere, false if nothing was sent. */
+async function send(list,how){
   if(!list.length)return false;
   const sel=document.getElementById('tag-layout'),mode=sel?sel.value:tagLayout();
   try{localStorage.setItem(KEY,mode)}catch(e){}
   let blob;try{blob=L.buildPdf(list,mode)}catch(e){toast('Could not make the labels: '+e.message,true);return false}
   const name='tags-'+list[0].tag+(list.length>1?'-and-'+(list.length-1)+'-more':'')+'.pdf';
-  const file=new File([blob],name,{type:'application/pdf'});
-  if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{await navigator.share({files:[file],title:'Labels to print'});return true}
-    catch(e){if(e.name==='AbortError')return false}
+  const url=URL.createObjectURL(blob);
+  setTimeout(()=>URL.revokeObjectURL(url),120000);
+  if(how==='print'){
+    const w=window.open(url,'_blank');
+    if(w){toast('The labels opened in a new tab. Press Print there and pick the Labeer printer.');return true}
+    how='save';   /* pop-up blocked: save the file instead */
   }
-  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  if(how==='share'){
+    const file=new File([blob],name,{type:'application/pdf'});
+    try{await navigator.share({files:[file],title:'Labels to print'});return true}
+    catch(e){if(e.name==='AbortError'){toast('Nothing was shared. Use Save label file, then open it in FlashLabel Pro.');return false}}
+  }
+  const a=document.createElement('a');
   a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),10000);
-  toast('Saved '+name+'. Open it from the label printer app.');
+  toast('Saved '+name+'. Open FlashLabel Pro and print this file.');
   return true;
 }
 
@@ -214,9 +236,9 @@ document.addEventListener('click',async e=>{
   else if(a==='no'){st.ask=null;rerender()}
   else if(a==='yes'){const ids=st.ask||[];st.ask=null;await markPrinted(ids)}
   else if(a==='mark'){const ids=shown().filter(checked).map(r=>r.id);await markPrinted(ids)}
-  else if(a==='send'){
+  else if(a==='save'||a==='print'||a==='share'){
     const list=shown().filter(checked);if(!list.length)return;
-    if(await share(list)){st.ask=list.map(r=>r.id);st.sel=null;rerender()}
+    if(await send(list,a)){st.ask=list.map(r=>r.id);st.sel=null;rerender()}
   }
 });
 document.addEventListener('change',e=>{
