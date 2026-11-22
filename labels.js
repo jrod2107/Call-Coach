@@ -79,7 +79,7 @@ const shown=()=>{
 const checked=r=>st.sel?st.sel.has(r.id):true;
 
 /* ---------- the list ---------- */
-const tagLayout=()=>{try{const v=localStorage.getItem(KEY);return ['1','2','small'].includes(v)?v:'3'}catch(e){return '3'}};
+const tagLayout=()=>{try{const v=localStorage.getItem(KEY);return ['1','2','3','small'].includes(v)?v:'small'}catch(e){return 'small'}};
 const layoutSel=()=>`<select id="tag-layout" aria-label="Labels" style="width:auto"><option value="3" ${tagLayout()==='3'?'selected':''}>3 tags per 4x6 label</option><option value="2" ${tagLayout()==='2'?'selected':''}>2 tags per 4x6 label</option><option value="1" ${tagLayout()==='1'?'selected':''}>1 tag per 4x6 label</option><option value="small" ${tagLayout()==='small'?'selected':''}>Small labels, 2.25 x 1.25 (1 per label)</option></select>`;
 /* Phones and tablets send the labels as pictures through the Share menu, where FlashLabel Pro (the Labeer
    printer's app) takes them; it does not take PDFs. Computers print the PDF. Save label file is the fallback. */
@@ -92,7 +92,7 @@ function sendButtons(n){
 }
 const howTo=()=>`<details style="margin:0 12px 12px"><summary>How to print</summary>
   <p><b>On a phone or tablet:</b> tap Send to FlashLabel Pro and pick FlashLabel Pro in the menu that opens. Print from there. Each label goes over as a picture.</p>
-  <p><b>On a computer:</b> plug the Labeer printer in with its USB cable and install Labeer's driver once. Click Print, then in the tab that opens press Print again (Cmd+P on a Mac, Ctrl+P on Windows). Pick the Labeer printer and the 4 x 6 paper size. For the small labels, pick 2.25 x 1.25.</p>
+  <p><b>On a computer:</b> plug the Labeer printer in with its USB cable and install Labeer's driver once. Choose Small labels in the box above, then click Print. In the tab that opens, use the system print window (on a Mac in Chrome: "Print using system dialog", or Option+Cmd+P). Pick the Y43 printer, paper size 2.25x1.25", Landscape, Scaling 100%. Save those settings as a preset called Small label so next time you only pick the preset. The browser's own print window can turn the label sideways, so skip it.</p>
   <p>If FlashLabel Pro is not in the menu, tap Save label file instead and open the file from FlashLabel Pro.</p>
   <p>When the labels are out, answer Yes so they leave this list.</p></details>`;
 L.view=function(){
@@ -248,7 +248,7 @@ async function send(list,how){
   setTimeout(()=>URL.revokeObjectURL(url),120000);
   if(how==='print'){
     const w=window.open(url,'_blank');
-    if(w){toast('The labels opened in a new tab. Press Print there and pick the Labeer printer.');return true}
+    if(w){toast('The labels opened in a new tab. Print them with the system print window (Option+Cmd+P on a Mac).');return true}
     how='save';   /* pop-up blocked: save the file instead */
   }
   if(how==='share'){
