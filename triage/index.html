@@ -138,6 +138,15 @@ function statePill(j){
 }
 /* Only visits still ahead. A visit whose start time has passed is on the technician now, not on this list. */
 const upcoming=()=>S.jobs.filter(j=>hoursTo(j)>0);
+/* Chasing model numbers. Asking the customer only helps while there is still time to get parts, so the office is
+   asked to call only when the visit is more than 24 hours away. Inside 24 hours nobody is told to call: the job
+   shows on the parts run list instead, so the manager knows the technician is going without one.
+   A job triaged as "no parts needed" does not need a model number. */
+const ASK_HOURS=24;
+const needsModel=j=>!String(triOf(j).model||'').trim()&&!(isTriaged(j)&&triOf(j).parts_call==='none');
+const bySoonest=(a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start);
+const askModel=()=>upcoming().filter(j=>needsModel(j)&&hoursTo(j)>ASK_HOURS).sort(bySoonest);
+const lateModel=()=>upcoming().filter(j=>needsModel(j)&&hoursTo(j)<=ASK_HOURS).sort(bySoonest);
 const untriaged=()=>upcoming().filter(j=>!handled(j)).sort((a,b)=>new Date(a.scheduled_start)-new Date(b.scheduled_start));
 const within=(j,days)=>hoursTo(j)<=days*24;
 
@@ -291,6 +300,7 @@ const sec=(title,help,rows,empty,count)=>`<section class="sec"><header><h2>${tit
 function vJobs(){
   const U=untriaged(),late=U.filter(j=>urgency(j)[2]===0),due=U.filter(j=>urgency(j)[2]===1),later=U.filter(j=>urgency(j)[2]===2),done=upcoming().filter(handled);
   return (late.length?`<div class="notice">${late.length} ${late.length===1?'job is':'jobs are'} inside 24 hours and not triaged. Go through ${late.length===1?'it':'them'} now so the parts can be on the truck.</div>`:'')
+   +sec('Ask for the model number','No model number on file, and the visit is more than 24 hours away. Call or text the customer and ask for a photo of the tag, soonest visit first. Open the job and type the model in when it arrives.',askModel().map(vJobRow),'Every coming job has a model number.')
    +sec('Overdue: visit inside 24 hours','These should already be done.',late.map(vJobRow),'Nothing overdue.')
    +sec('Due now: visit inside 48 hours','Triage these today, while there is still time to get parts.',due.map(vJobRow),'Nothing due.')
    +sec('Needs triage: further out','Booked more than 48 hours ahead. Triage them before the next parts run.',later.map(vJobRow),'Nothing waiting.')
@@ -311,6 +321,7 @@ function vRun(){
      :(S.loaded?`<div class="notice" style="background:var(--good-bg);color:var(--good)">Every job in the next ${S.runDays} days has been triaged.</div>`:''))
    +`<div class="tabs" role="group" aria-label="How far ahead to check"><span class="muted" style="align-self:center">Check jobs in the next</span>${[2,3,5,7].map(d=>`<button aria-pressed="${S.runDays===d}" data-a="days" data-d="${d}">${d} days</button>`).join('')}</div>`
    +sec('Not triaged yet','Go over these first. With a model number on file, Claude can draft the triage in under a minute.',U.map(vJobRow),'None. Good to go.')
+   +(lateModel().length?sec('No model number, visit inside 24 hours','Too late to ask the customer. The technician reads the tag on site, so the right part may not be on the truck.',lateModel().map(vJobRow),''):'')
    +(thin.length?sec('Parts needed, none listed','Marked "parts needed" but no part was suggested or requested. Add the parts or ask the technician.',thin.map(vJobRow),''):'')
    +sec('Waiting for sign-off','Suggested by Claude or a technician. '+(signer()?'Sign off the ones to buy; they go to the Parts desk.':'A manager or technician signs these off.'),
         wait.map(x=>`<div class="item" style="display:block">${vSug(x,false)}</div>`),'Nothing waiting.',wait.length)
