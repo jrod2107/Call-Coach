@@ -78,18 +78,21 @@ function toast(msg,bad){const t=$('toast');t.textContent=msg;t.className=bad?'ba
 
 async function whoami(){
   S.me=await Auth.profile(S.session);
+  Object.assign(S,await Auth.assurance(S.session));
 }
+/* Work order and call numbers come from tables that need the 6-digit code. */
+const coded=()=>S.aal==='aal2';
 async function load(){
   S.loading=true;render();
   const since=new Date(Date.now()-7*864e5).toISOString();
   const jobs=[S.me.role==='stock'?Promise.resolve({data:[]}):SB.from('parts').select('id,status,eta,return_by,returned_on,created_at,requested_by').limit(2000)];
-  if(office())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
+  if(office()&&coded())jobs.push(SB.from('intakes').select('outcome,created_at').gte('created_at',since).limit(1000));
   const res=await Promise.all(jobs);
   S.loading=false;
   const bad=res.find(r=>r.error);S.err=bad?bad.error.message:'';
   S.parts=res[0].data||[];
-  if(office()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];}
-  S.intakes=office()&&res[1]?res[1].data||[]:[];
+  if(office()&&coded()){const w=await SB.from('work_orders').select('status,approval,invoice_sent_on,paid_on').limit(2000);S.wos=w.data||[];}
+  S.intakes=office()&&coded()&&res[1]?res[1].data||[]:[];
   render();
   loadTriage();
 }
@@ -141,13 +144,14 @@ function vAttention(){
       ${stat(n(p=>p.status==='received'),'Parts received, not yet installed','good','../tobook/#parts')}
       ${stat(n(p=>p.status==='received'&&p.return_by&&daysUntil(p.return_by)<=7),'Return windows closing within a week','warn','../parts/')}
       ${stat(n(p=>p.status==='returned'),'Returns still waiting on credit','warn','../parts/')}</div>
-     <h3>Work orders from warranty companies and property managers</h3><div class="grid">
+     ${coded()?'':`<h3>Work orders and calls</h3>${Auth.codeForm('Work order and call numbers hold customer details.','../',S.next)}`}
+     ${!coded()?'':`<h3>Work orders from warranty companies and property managers</h3><div class="grid">
       ${S.wos.some(w=>w.status==='draft')?stat(S.wos.filter(w=>w.status==='draft').length,'Arrived by email, waiting for review','warn','../workorders/'):''}
       ${stat(S.wos.filter(w=>['new','contacting'].includes(w.status)).length,'Waiting to be contacted and booked','warn','../tobook/#wo')}
       ${stat(S.wos.filter(w=>['new','contacting','booked'].includes(w.status)&&['needed','requested'].includes(w.approval)).length,'Waiting on approval','warn','../workorders/')}
       ${stat(S.wos.filter(w=>w.status!=='cancelled'&&w.invoice_sent_on&&!w.paid_on).length,'Invoiced and not paid yet','warn','../workorders/')}</div>
      <h3>Calls taken in the last 7 days</h3><div class="grid">
-      ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../tobook/#calls')}</div>`;
+      ${stat(weekJobs,'Booked as jobs','','../intake/')}${stat(weekLeads,'Saved as leads or incomplete','warn','../tobook/#calls')}</div>`}`;
   }
   if(S.me.role==='stock')return `<h3>Your work</h3><div class="grid"><a class="stat" href="../stock/"><b>Stock</b><span>Scan parts in, sort them, and keep the eBay list</span></a></div>`;
   return vTriage()+`<h3>Your parts</h3><div class="grid">
